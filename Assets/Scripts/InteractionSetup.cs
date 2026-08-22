@@ -17,41 +17,52 @@ public class InteractionSetup : MonoBehaviour
             return;
         }
 
-        MeshRenderer[] meshRenderers =
-            roomRoot.GetComponentsInChildren<MeshRenderer>();
-
         int count = 0;
 
-        foreach (MeshRenderer meshRenderer in meshRenderers)
+        // Each direct child of Model is treated as one selectable object.
+        foreach (Transform objectRoot in roomRoot)
         {
-            GameObject obj = meshRenderer.gameObject;
+            if (objectRoot == null)
+                continue;
 
-            // Add a Mesh Collider if the object does not already have one.
-            if (obj.GetComponent<Collider>() == null)
+            // Add interaction to the furniture/object parent.
+            if (objectRoot.GetComponent<ObjectInteraction>() == null)
             {
-                MeshFilter meshFilter = obj.GetComponent<MeshFilter>();
+                objectRoot.gameObject.AddComponent<ObjectInteraction>();
+            }
 
-                if (meshFilter != null && meshFilter.sharedMesh != null)
+            // Add colliders to the actual mesh objects.
+            MeshFilter[] meshFilters =
+                objectRoot.GetComponentsInChildren<MeshFilter>();
+
+            foreach (MeshFilter meshFilter in meshFilters)
+            {
+                if (meshFilter.sharedMesh == null)
+                    continue;
+
+                GameObject meshObject = meshFilter.gameObject;
+
+                if (meshObject.GetComponent<Collider>() == null)
                 {
                     MeshCollider meshCollider =
-                        obj.AddComponent<MeshCollider>();
+                        meshObject.AddComponent<MeshCollider>();
 
-                    meshCollider.sharedMesh = meshFilter.sharedMesh;
+                    meshCollider.sharedMesh =
+                        meshFilter.sharedMesh;
                 }
             }
 
-            // Add our interaction component.
-            if (obj.GetComponent<ObjectInteraction>() == null)
-            {
-                obj.AddComponent<ObjectInteraction>();
-            }
-
             count++;
+
+            Debug.Log(
+                "Selectable object prepared: " +
+                objectRoot.name
+            );
         }
 
         Debug.Log(
-            "Interaction setup complete. Objects prepared: "
-            + count
+            "Interaction setup complete. Objects prepared: " +
+            count
         );
     }
 }

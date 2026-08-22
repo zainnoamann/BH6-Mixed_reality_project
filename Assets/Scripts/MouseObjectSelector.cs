@@ -5,7 +5,7 @@ public class MouseObjectSelector : MonoBehaviour
 {
     [Header("Raycast")]
     [SerializeField] private Camera mainCamera;
-    [SerializeField] private LayerMask selectableLayer;
+    [SerializeField] private LayerMask selectableLayer = ~0;
     [SerializeField] private float rayDistance = 100f;
 
     private ObjectInteraction hoveredObject;
@@ -26,73 +26,85 @@ public class MouseObjectSelector : MonoBehaviour
 
     private void Update()
     {
-        if (Mouse.current == null)
-        {
+        if (Mouse.current == null || mainCamera == null)
             return;
-        }
 
         HandleHover();
         HandleSelection();
     }
 
     private void HandleHover()
-{
-    Ray ray = mainCamera.ScreenPointToRay(Mouse.current.position.ReadValue());
-
-    if (Physics.Raycast(ray, out RaycastHit hit, rayDistance, selectableLayer))
     {
-        Debug.Log("Raycast hit mesh: " + hit.collider.name);
+        Ray ray = mainCamera.ScreenPointToRay(
+            Mouse.current.position.ReadValue()
+        );
 
-        // Find ObjectInteraction on the hit object OR one of its parents
-        ObjectInteraction interaction = hit.collider.GetComponentInParent<ObjectInteraction>();
-
-        if (interaction != null)
+        if (Physics.Raycast(
+            ray,
+            out RaycastHit hit,
+            rayDistance,
+            selectableLayer))
         {
-            Debug.Log("Found parent object: " + interaction.gameObject.name);
+            ObjectInteraction interaction =
+                hit.collider.GetComponentInParent<ObjectInteraction>();
 
-            if (hoveredObject != interaction)
+            if (interaction != null)
             {
-                hoveredObject = interaction;
+                if (hoveredObject != interaction)
+                {
+                    if (hoveredObject != null &&
+                        hoveredObject != selectedObject)
+                    {
+                        hoveredObject.SetHover(false);
+                    }
+
+                    hoveredObject = interaction;
+
+                    if (hoveredObject != selectedObject)
+                    {
+                        hoveredObject.SetHover(true);
+                    }
+
+                    Debug.Log(
+                        "Hovering: " +
+                        hoveredObject.gameObject.name
+                    );
+                }
+
+                return;
             }
         }
-        else
+
+        if (hoveredObject != null &&
+            hoveredObject != selectedObject)
         {
-            Debug.Log("No ObjectInteraction found on parent.");
-            hoveredObject = null;
+            hoveredObject.SetHover(false);
         }
-    }
-    else
-    {
+
         hoveredObject = null;
     }
-}
+
     private void HandleSelection()
     {
         if (!Mouse.current.leftButton.wasPressedThisFrame)
-        {
             return;
-        }
 
         if (hoveredObject == null)
-        {
             return;
-        }
 
-        // Remove selection from previous object.
         if (selectedObject != null &&
             selectedObject != hoveredObject)
         {
             selectedObject.SetSelected(false);
         }
 
-        // Select the new object.
         selectedObject = hoveredObject;
 
         selectedObject.SetHover(false);
         selectedObject.SetSelected(true);
 
         Debug.Log(
-            "Object selected: " +
+            "Selected: " +
             selectedObject.gameObject.name
         );
     }

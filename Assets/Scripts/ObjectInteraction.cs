@@ -3,38 +3,46 @@ using UnityEngine;
 public class ObjectInteraction : MonoBehaviour
 {
     private Renderer[] renderers;
-
     private Material[][] originalMaterials;
+
+    private bool isHovered;
+    private bool isSelected;
 
     private void Awake()
     {
-        renderers = GetComponentsInChildren<Renderer>();
+        renderers = GetComponentsInChildren<Renderer>(true);
 
         originalMaterials = new Material[renderers.Length][];
 
         for (int i = 0; i < renderers.Length; i++)
         {
-            originalMaterials[i] = renderers[i].materials;
+            // Save the REAL original materials
+            originalMaterials[i] = renderers[i].sharedMaterials;
         }
     }
 
     public void SetHover(bool active)
     {
-        if (active)
-        {
-            SetHighlight();
-        }
-        else
-        {
-            RestoreMaterials();
-        }
+        isHovered = active;
+        UpdateAppearance();
     }
 
     public void SetSelected(bool active)
     {
-        if (active)
+        isSelected = active;
+        UpdateAppearance();
+    }
+
+    private void UpdateAppearance()
+    {
+        // Selected always has priority
+        if (isSelected)
         {
             SetSelectedHighlight();
+        }
+        else if (isHovered)
+        {
+            SetHoverHighlight();
         }
         else
         {
@@ -42,7 +50,7 @@ public class ObjectInteraction : MonoBehaviour
         }
     }
 
-    private void SetHighlight()
+    private void SetHoverHighlight()
     {
         foreach (Renderer renderer in renderers)
         {
@@ -72,7 +80,8 @@ public class ObjectInteraction : MonoBehaviour
     {
         for (int i = 0; i < renderers.Length; i++)
         {
-            renderers[i].materials = originalMaterials[i];
+            // Restore the actual original materials
+            renderers[i].sharedMaterials = originalMaterials[i];
         }
     }
 }
