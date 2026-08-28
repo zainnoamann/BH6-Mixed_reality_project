@@ -34,7 +34,11 @@ public class MouseObjectSelector : MonoBehaviour
     }
 
     private void HandleHover()
-    {
+    {   
+        // Don't hover while rotating the camera
+    if (Mouse.current.rightButton.isPressed)
+        return;
+        
         Ray ray = mainCamera.ScreenPointToRay(
             Mouse.current.position.ReadValue()
         );
