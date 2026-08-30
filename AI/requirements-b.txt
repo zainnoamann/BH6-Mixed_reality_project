@@ -1,0 +1,13 @@
+# Pipeline B: image.png -> object.glb (TripoSR)
+# Install into .venv-b only. Do not mix with .venv-a.
+# transformers is pinned: newer versions broke TripoSR state_dict on this stack.
+transformers==4.46.3
+huggingface_hub
+omegaconf==2.3.0
+einops
+Pillow
+trimesh
+scikit-image
+imageio
+tokenizers==0.20.3
+safetensors

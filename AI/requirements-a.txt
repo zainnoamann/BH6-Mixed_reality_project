@@ -1,0 +1,9 @@
+# Pipeline A: text -> image.png
+# Install into .venv-a only. Do not mix with .venv-b.
+gguf>=0.10.0
+diffusers>=0.36
+accelerate
+huggingface_hub
+transformers>=4.57,<6
+Pillow
+torchvision
