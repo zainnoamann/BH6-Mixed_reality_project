@@ -6,6 +6,7 @@ __pycache__/
 *.pyc
 image.png
 object.glb
+shape.glb
+textured.glb
 prompt_embeds.pt
-triposr_out/
 .DS_Store
