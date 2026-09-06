@@ -11,6 +11,8 @@ public class MouseObjectSelector : MonoBehaviour
     private ObjectInteraction hoveredObject;
     private ObjectInteraction selectedObject;
 
+    [SerializeField] private SelectionUIController uiController;
+
     private void Start()
     {
         if (mainCamera == null)
@@ -111,5 +113,12 @@ public class MouseObjectSelector : MonoBehaviour
             "Selected: " +
             selectedObject.gameObject.name
         );
+
+        if (uiController != null)
+        {
+            uiController.ShowObject(
+                selectedObject.gameObject.name
+            );
+        }
     }
 }
