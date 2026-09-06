@@ -1,0 +1,11 @@
+.venv-a/
+.venv-b/
+hf_cache/
+deps/
+__pycache__/
+*.pyc
+image.png
+object.glb
+prompt_embeds.pt
+triposr_out/
+.DS_Store

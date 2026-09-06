@@ -7,6 +7,17 @@
 [Ll]ogs/
 [Uu]ser[Ss]ettings/
 
+# AI pipeline local envs and generated assets (SageMaker / GPU host)
+AI/.venv-a/
+AI/.venv-b/
+AI/hf_cache/
+AI/deps/
+AI/image.png
+AI/object.glb
+AI/prompt_embeds.pt
+AI/triposr_out/
+AI/**/__pycache__/
+
 # IDE files
 .vscode/
 *.csproj
