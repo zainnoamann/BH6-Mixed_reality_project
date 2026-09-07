@@ -76,4 +76,26 @@ public class SelectionUIController : MonoBehaviour
 
         Debug.Log("Selection panel closed.");
     }
+
+    public void ShowNewItem()
+    {
+        selectionPanel.SetActive(true);
+    
+        if (objectInfoText != null)
+        {
+            objectInfoText.text = "New Item";
+        }
+    
+        if (promptInputField != null)
+        {
+            promptInputField.text = "";
+            promptInputField.placeholder.GetComponent<TMP_Text>().text =
+                "Describe what you want to create...";
+        }
+    
+        if (statusText != null)
+        {
+            statusText.text = "Status: Ready";
+        }
+    }
 }

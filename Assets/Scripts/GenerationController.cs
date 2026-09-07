@@ -28,20 +28,13 @@ public class GenerationController : MonoBehaviour
 
     public void CancelGeneration()
     {
-        if (!generationRunning)
-            return;
-
         Debug.Log("Generation cancelled.");
-
+    
         generationRunning = false;
-
-        // Hide loading UI
+    
         if (loadingPopup != null)
         {
             loadingPopup.SetActive(false);
         }
-
-        // TODO:
-        // Send cancellation request to the AI backend later.
     }
 }
