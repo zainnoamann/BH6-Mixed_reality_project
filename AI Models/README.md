@@ -7,7 +7,7 @@ Two **separate** Python environments. Never install A and B into the same venv, 
 | Job | text → `image.png` | `image.png` → `shape.glb` |
 | Model | FLUX.2-klein-4B GGUF Q8 | Hunyuan3D-2mini-Turbo (shape only) |
 | Why | Fits a T4 if you encode, drop Qwen, then denoise | TRELLIS.2 hangs in `to_glb`. TripoSR finished but mesh quality was poor. Hunyuan shape on Colab T4 produced the chair we use in Unity. |
-| Texture | | **Unity URP Lit** + a tileable wood/fabric PNG. Hunyuan Paint does not fit Colab 12 GB RAM. |
+| Texture | | Hunyuan Paint turbo bake (`textured.glb`) on Colab T4, or **Unity URP Lit** + a tileable wood/fabric PNG to swap materials without a second bake. |
 
 Copy **this `AI Models/` directory** onto Colab (`/content/...`) or SageMaker. A Mac cannot host these CUDA models.
 
@@ -24,7 +24,23 @@ This is the path that wrote a real `shape.glb` on a Colab T4.
 - Colab: **no venv** (`ensurepip` fails). Use the runtime `python3`
 - Do not `pip install torch`
 
-Hunyuan Paint (bake the FLUX photo onto UVs) is not part of this demo. It OOM'd on free Colab. Wood/fabric is a Unity material.
+## Hunyuan Paint (bake `image.png` onto `shape.glb`)
+
+This is the Colab T4 path that wrote `textured.glb`. There is no GGUF/Q8 Paint file. Do not load shape and paint in one process.
+
+- Skip Delight (extra lighting UNet)
+- Patch `torch.load` / safetensors onto **CUDA**. Stock Diffusers loads on CPU, fills 12.7 GB RAM, GPU stays at 0, runtime dies
+- `trust_remote_code=True` for `hunyuanpaint/pipeline.py`
+- After load, `.to("cuda")` on leftover modules (`unet`, `unet_ref`, `vae`). Otherwise bake crashes: mat1 on cuda, weights on cpu
+- Texture 512. Default **30** denoise steps (the run that finished, ~20-40 min, progress bar was off in stock Hunyuan). `python pipelines/run_hunyuan_paint.py --steps 10` is faster
+- `HF_HOME` on local disk (`/content/hf_cache`), not Drive, while loading
+- No `enable_model_cpu_offload()`, no mmgp (not needed once CUDA load works)
+
+```bash
+python pipelines/run_hunyuan_paint.py
+```
+
+Watch Resources during load: RAM may spike, GPU should leave 0. Wait for `from_pretrained done`, then a denoise bar, then `done -> .../textured.glb`. Copy that file off the machine. Unity materials remain the path for wood vs fabric without rerunning Paint.
 
 ## One-time setup
 
@@ -67,7 +83,7 @@ On Colab you can persist weights by copying `hf_cache/` to Drive **after** the r
 ## Unity
 
 1. Install **glTFast** (`com.unity.cloud.gltfast`) from Package Manager.
-2. Copy `shape.glb` into `Assets/`.
+2. Copy `shape.glb` (Unity materials) or `textured.glb` (FLUX bake) into `Assets/`.
 3. Drag it into the scene. Press **F**. Scale if needed (`0.01` or `100`).
 4. Create a **URP Lit** material. Base Map = a **tileable** wood/fabric PNG (not the FLUX photo). Metallic **0**. Metallic Map **empty**. Smoothness ~0.25.
 5. Assign that material on the object's Mesh Renderer → Materials → Element 0.
@@ -81,13 +97,14 @@ If grain is missing, unwrap in Blender (Smart UV Project) and reimport.
 - Set `Flux2KleinPipeline._execution_device` on the **class**. Dummy text encoder after Qwen is dropped.
 - Hunyuan must load the ckpt on **CUDA**. `scripts/patch_hunyuan_cuda.py` does that.
 - TRELLIS.2 stays a 5090-class quality path. It hangs after texture sampling in remesh/`to_glb`.
-- Hunyuan Paint stays off the T4/Colab demo path.
+- Hunyuan Paint on T4: CUDA `torch.load`, skip Delight, then move leftover modules onto GPU. CPU load of the Paint UNet kills Colab RAM.
 
 ## Layout
 
 ```
 pipelines/run_t2i.py              Pipeline A
 pipelines/run_hunyuan_shape.py    Pipeline B (working Hunyuan)
+pipelines/run_hunyuan_paint.py    Hunyuan Paint turbo (CUDA load, skip Delight)
 scripts/setup_a.sh
 scripts/setup_b.sh                clone Hunyuan + CUDA patch
 scripts/session_a.sh
