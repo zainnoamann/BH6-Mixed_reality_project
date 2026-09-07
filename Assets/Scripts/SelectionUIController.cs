@@ -69,6 +69,11 @@ public class SelectionUIController : MonoBehaviour
 
     public void HidePanel()
     {
-        selectionPanel.SetActive(false);
+        if (selectionPanel != null)
+        {
+            selectionPanel.SetActive(false);
+        }
+
+        Debug.Log("Selection panel closed.");
     }
 }
