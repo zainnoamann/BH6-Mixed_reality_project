@@ -36,9 +36,19 @@ public class GenerationReviewController : MonoBehaviour
     {
         Debug.Log("Regeneration requested.");
 
-        if (reviewPanel != null)
+        if (reviewPanel != null && loadingPopup != null)
         {
-            reviewPanel.SetActive(false);
+            RectTransform reviewRect =
+                reviewPanel.GetComponent<RectTransform>();
+
+            RectTransform loadingRect =
+                loadingPopup.GetComponent<RectTransform>();
+
+            if (reviewRect != null && loadingRect != null)
+            {
+                loadingRect.position =
+                    reviewRect.position + new Vector3(125f, 0f, 0f);
+            }
         }
 
         if (loadingPopup != null)

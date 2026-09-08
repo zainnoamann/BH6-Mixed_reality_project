@@ -11,6 +11,12 @@ public class SelectionUIController : MonoBehaviour
     [SerializeField] private TMP_Text statusText;
     [SerializeField] private Button generateButton;
     [SerializeField] private GameObject loadingPopup;
+    [Header("Panel Positions")]
+    [SerializeField] private Vector2 normalPanelPosition;
+    [SerializeField] private Vector2 newItemPanelPosition;
+
+    private bool isNewItem = false;
+    
 
     private void Start()
     {
@@ -23,11 +29,27 @@ public class SelectionUIController : MonoBehaviour
         }
     }
 
-    public void ShowObject(string objectName)
+    public void ShowObject(string objectName, Vector3 screenPosition)
     {
+        isNewItem = false;
+
         Debug.Log("Selection UI: ShowObject called for " + objectName);
 
         selectionPanel.SetActive(true);
+        
+        RectTransform panelRect =
+            selectionPanel.GetComponent<RectTransform>();
+
+        if (panelRect != null)
+        {
+            panelRect.position =
+                    screenPosition +
+                    new Vector3(
+                        normalPanelPosition.x,
+                        normalPanelPosition.y,
+                        0
+                    );
+        }
 
         objectInfoText.text = "Selected: " + objectName;
 
@@ -63,6 +85,18 @@ public class SelectionUIController : MonoBehaviour
         // Hide the selection UI
         // selectionPanel.SetActive(false);
 
+        RectTransform selectionRect =
+            selectionPanel.GetComponent<RectTransform>();
+
+        RectTransform loadingRect =
+            loadingPopup.GetComponent<RectTransform>();
+
+        if (selectionRect != null && loadingRect != null)
+        {
+            loadingRect.position =
+                selectionRect.position + new Vector3(125f, 0f, 0f);
+        }
+
         // Show the loading popup
         loadingPopup.SetActive(true);
     }
@@ -79,20 +113,29 @@ public class SelectionUIController : MonoBehaviour
 
     public void ShowNewItem()
     {
+        isNewItem = true;
+
         selectionPanel.SetActive(true);
-    
+
+        RectTransform panelRect = selectionPanel.GetComponent<RectTransform>();
+
+        if (panelRect != null)
+        {
+            panelRect.anchoredPosition = newItemPanelPosition;
+        }
+
         if (objectInfoText != null)
         {
             objectInfoText.text = "New Item";
         }
-    
+
         if (promptInputField != null)
         {
             promptInputField.text = "";
             promptInputField.placeholder.GetComponent<TMP_Text>().text =
                 "Describe what you want to create...";
         }
-    
+
         if (statusText != null)
         {
             statusText.text = "Status: Ready";

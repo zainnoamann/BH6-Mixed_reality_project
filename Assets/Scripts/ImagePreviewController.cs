@@ -24,32 +24,50 @@ public class ImagePreviewController : MonoBehaviour
 
     public void RegenerateImage()
     {
-        if (imagePreviewPanel != null)
+        Debug.Log("Image regeneration requested.");
+
+        if (imagePreviewPanel != null && loadingPopup != null)
         {
-            imagePreviewPanel.SetActive(false);
+            RectTransform panelRect =
+                imagePreviewPanel.GetComponent<RectTransform>();
+
+            RectTransform loadingRect =
+                loadingPopup.GetComponent<RectTransform>();
+
+            if (panelRect != null && loadingRect != null)
+            {
+                loadingRect.anchoredPosition = panelRect.anchoredPosition;
+            }
         }
 
         if (loadingPopup != null)
         {
             loadingPopup.SetActive(true);
         }
-
-        Debug.Log("Image regeneration requested.");
     }
 
     public void Generate3D()
     {
-        if (imagePreviewPanel != null)
+        Debug.Log("3D generation requested.");
+
+        if (imagePreviewPanel != null && loadingPopup != null)
         {
-            imagePreviewPanel.SetActive(false);
+            RectTransform panelRect =
+                imagePreviewPanel.GetComponent<RectTransform>();
+
+            RectTransform loadingRect =
+                loadingPopup.GetComponent<RectTransform>();
+
+            if (panelRect != null && loadingRect != null)
+            {
+                loadingRect.anchoredPosition = panelRect.anchoredPosition;
+            }
         }
 
         if (loadingPopup != null)
         {
             loadingPopup.SetActive(true);
         }
-
-        Debug.Log("3D generation requested.");
     }
 
     public void CancelPreview()

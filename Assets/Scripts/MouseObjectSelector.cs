@@ -116,9 +116,13 @@ public class MouseObjectSelector : MonoBehaviour
 
         if (uiController != null)
         {
+            Vector3 screenPosition =
+                mainCamera.WorldToScreenPoint(
+                        selectedObject.transform.position
+                );
+
             uiController.ShowObject(
-                selectedObject.gameObject.name
-            );
+                selectedObject.gameObject.name, screenPosition);
         }
     }
 }
