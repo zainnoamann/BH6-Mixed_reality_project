@@ -52,7 +52,14 @@ bash scripts/setup_a.sh
 bash scripts/setup_b.sh
 ```
 
-Wait for `hunyuan ok`.
+Wait for `hunyuan ok`. Those scripts install from **two** files, not a single `requirements.txt`:
+
+| File | Pipeline | Notes |
+|---|---|---|
+| `requirements-a.txt` | A (FLUX → `image.png`) | `.venv-a` only |
+| `requirements-b.txt` | B (Hunyuan shape + Paint) | `.venv-b` only |
+
+Do not merge them. Do not `pip install torch` (reuse Colab/SageMaker CUDA torch). Paint uses B plus the cloned Hunyuan repo.
 
 ## Every session
 
