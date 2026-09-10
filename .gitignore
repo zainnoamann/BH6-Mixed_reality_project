@@ -17,6 +17,15 @@ AI/object.glb
 AI/prompt_embeds.pt
 AI/triposr_out/
 AI/**/__pycache__/
+AI Models/.venv-a/
+AI Models/.venv-b/
+AI Models/hf_cache/
+AI Models/deps/
+AI Models/image.png
+AI Models/object.glb
+AI Models/shape.glb
+AI Models/prompt_embeds.pt
+AI Models/**/__pycache__/
 
 # IDE files
 .vscode/

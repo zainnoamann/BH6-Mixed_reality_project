@@ -1,13 +1,19 @@
-# Pipeline B: image.png -> object.glb (TripoSR)
-# Install into .venv-b only. Do not mix with .venv-a.
-# transformers is pinned: newer versions broke TripoSR state_dict on this stack.
-transformers==4.46.3
+# Pipeline B: image.png -> shape.glb (Hunyuan3D-2mini-Turbo)
+# Do not mix with .venv-a. Do not pip install torch; reuse Colab/SageMaker CUDA torch.
 huggingface_hub
-omegaconf==2.3.0
+transformers>=4.48.0,<5
+diffusers>=0.30.0,<0.35
+accelerate
+safetensors
+omegaconf
 einops
 Pillow
+numpy
+tqdm
+opencv-python
 trimesh
-scikit-image
-imageio
-tokenizers==0.20.3
-safetensors
+pygltflib
+xatlas
+ninja
+pybind11
+pymeshlab
