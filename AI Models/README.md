@@ -1,27 +1,65 @@
 # CreativeTwin local AI pipelines
 
-Two **separate** Python environments. Never install A and B into the same venv, and never load both models in one process. Unity consumes `object.glb`.
+Two **separate** Python environments. Never install A and B into the same venv, and never load both models in one process.
 
 | | Pipeline A | Pipeline B |
 |---|---|---|
-| Job | text → `image.png` | `image.png` → `object.glb` |
-| Model | FLUX.2-klein-4B GGUF Q8 | TripoSR |
-| Venv | `.venv-a` | `.venv-b` |
-| Why this model | Fits a T4 if you encode, drop Qwen, then denoise | TRELLIS.2 on a T4 hangs in decode/remesh; TripoSR finishes and writes a GLB |
+| Job | text → `image.png` | `image.png` → `shape.glb` |
+| Model | FLUX.2-klein-4B GGUF Q8 | Hunyuan3D-2mini-Turbo (shape only) |
+| Why | Fits a T4 if you encode, drop Qwen, then denoise | TRELLIS.2 hangs in `to_glb`. TripoSR finished but mesh quality was poor. Hunyuan shape on Colab T4 produced the chair we use in Unity. |
+| Texture | | Hunyuan Paint turbo bake (`textured.glb`) on Colab T4, or **Unity URP Lit** + a tileable wood/fabric PNG to swap materials without a second bake. |
 
-This folder lives at `AI/` in the CreativeTwin Unity repo. Copy **this `AI/` directory** onto the SageMaker volume and run there. A Mac cannot host these CUDA models.
+Copy **this `AI Models/` directory** onto Colab (`/content/...`) or SageMaker. A Mac cannot host these CUDA models.
 
-## One-time setup (SageMaker Jupyter terminal)
+## Pipeline B: the working Hunyuan run (do not undo)
 
-Use **bash**, not `sh`. `source file.sh` in `sh` looks on PATH and fails even if `ls` shows the file. Use `source ./scripts/session_a.sh`.
+This is the path that wrote a real `shape.glb` on a Colab T4.
+
+- Model: `tencent/Hunyuan3D-2mini` / `hunyuan3d-dit-v2-mini-turbo`
+- `use_safetensors=False`, `device="cuda"`
+- **No** `enable_flashvdm()`, **no** `enable_model_cpu_offload()`
+- `num_inference_steps=5`, `octree_resolution=256`, `num_chunks=20000`
+- Patch `hy3dgen/shapegen/pipelines.py` so `torch.load` uses `map_location='cuda'` (stock code loads on CPU, fills 12 GB RAM, GPU stays at 0)
+- `HF_HOME` on **local disk** (`hf_cache/`), not Google Drive, while the checkpoint loads
+- Colab: **no venv** (`ensurepip` fails). Use the runtime `python3`
+- Do not `pip install torch`
+
+## Hunyuan Paint (bake `image.png` onto `shape.glb`)
+
+This is the Colab T4 path that wrote `textured.glb`. There is no GGUF/Q8 Paint file. Do not load shape and paint in one process.
+
+- Skip Delight (extra lighting UNet)
+- Patch `torch.load` / safetensors onto **CUDA**. Stock Diffusers loads on CPU, fills 12.7 GB RAM, GPU stays at 0, runtime dies
+- `trust_remote_code=True` for `hunyuanpaint/pipeline.py`
+- After load, `.to("cuda")` on leftover modules (`unet`, `unet_ref`, `vae`). Otherwise bake crashes: mat1 on cuda, weights on cpu
+- Texture 512. Default **30** denoise steps (the run that finished, ~20-40 min, progress bar was off in stock Hunyuan). `python pipelines/run_hunyuan_paint.py --steps 10` is faster
+- `HF_HOME` on local disk (`/content/hf_cache`), not Drive, while loading
+- No `enable_model_cpu_offload()`, no mmgp (not needed once CUDA load works)
 
 ```bash
-cd /home/ec2-user/SageMaker/AI
+python pipelines/run_hunyuan_paint.py
+```
+
+Watch Resources during load: RAM may spike, GPU should leave 0. Wait for `from_pretrained done`, then a denoise bar, then `done -> .../textured.glb`. Copy that file off the machine. Unity materials remain the path for wood vs fabric without rerunning Paint.
+
+## One-time setup
+
+Use **bash**, not `sh`.
+
+```bash
+cd /path/to/AI\ Models
 bash scripts/setup_a.sh
 bash scripts/setup_b.sh
 ```
 
-Each setup creates a venv with `--system-site-packages` so it reuses the AMI CUDA torch. Extra packages live **in the venv on the notebook volume**, so they survive JupyterSystemEnv wipes better than installing into conda.
+Wait for `hunyuan ok`. Those scripts install from **two** files, not a single `requirements.txt`:
+
+| File | Pipeline | Notes |
+|---|---|---|
+| `requirements-a.txt` | A (FLUX → `image.png`) | `.venv-a` only |
+| `requirements-b.txt` | B (Hunyuan shape + Paint) | `.venv-b` only |
+
+Do not merge them. Do not `pip install torch` (reuse Colab/SageMaker CUDA torch). Paint uses B plus the cloned Hunyuan repo.
 
 ## Every session
 
@@ -29,50 +67,57 @@ Each setup creates a venv with `--system-site-packages` so it reuses the AMI CUD
 
 ```bash
 bash
-cd /home/ec2-user/SageMaker/AI
+cd /path/to/AI\ Models
 source ./scripts/session_a.sh
 python pipelines/run_t2i.py
 ```
 
-Wait for `done -> .../image.png`. Open `image.png`. If the chair on white looks good, do not rerun A.
+Wait for `done -> .../image.png`. If the chair on white looks good, do not rerun A.
 
 **B, new process:**
 
 ```bash
 bash
-cd /home/ec2-user/SageMaker/AI
+cd /path/to/AI\ Models
 source ./scripts/session_b.sh
-python pipelines/run_img2glb.py
+python pipelines/run_hunyuan_shape.py
 ```
 
-Wait for `done -> .../object.glb` and a non-zero file size. Download `object.glb`.
+Watch GPU RAM leave 0 GB after `Loading model from ...ckpt`. Wait for `done -> .../shape.glb` and a non-zero size. Copy `shape.glb` off the machine (Drive or download) before the runtime dies.
+
+On Colab you can persist weights by copying `hf_cache/` to Drive **after** the run. Next session copy Drive → local `hf_cache/`, then run B. Do not set `HF_HOME` to Drive during load.
 
 ## Unity
 
 1. Install **glTFast** (`com.unity.cloud.gltfast`) from Package Manager.
-2. Copy `object.glb` into this Unity project's `Assets/` folder.
-3. Drag it into the scene. Press **F** to frame. If it is tiny or huge, change Scale to `0.01` or `100`.
+2. Copy `shape.glb` (Unity materials) or `textured.glb` (FLUX bake) into `Assets/`.
+3. Drag it into the scene. Press **F**. Scale if needed (`0.01` or `100`).
+4. Create a **URP Lit** material. Base Map = a **tileable** wood/fabric PNG (not the FLUX photo). Metallic **0**. Metallic Map **empty**. Smoothness ~0.25.
+5. Assign that material on the object's Mesh Renderer → Materials → Element 0.
 
-If Unity will not import GLB, open the file in Blender first (File → Import → glTF 2.0). If Blender shows a chair, the file is fine and Unity needs glTFast.
+If grain is missing, unwrap in Blender (Smart UV Project) and reimport.
 
 ## What we learned (do not undo)
 
 - Match `CUDA_HOME` to `torch.version.cuda` (12.8 vs 13.0 vs 13.2).
 - FLUX GGUF file name is `flux-2-klein-4b-Q8_0.gguf`. Load with `config=black-forest-labs/FLUX.2-klein-4B`, `subfolder=transformer`.
 - Set `Flux2KleinPipeline._execution_device` on the **class**. Dummy text encoder after Qwen is dropped.
-- TripoSR is not `pip install git+...`; clone the repo and set `PYTHONPATH`.
-- Do not compile `torchmcubes` on this AMI; `scripts/patch_triposr.py` uses scikit-image.
-- TRELLIS.2 stays a 5090 quality path, not the T4 demo path.
+- Hunyuan must load the ckpt on **CUDA**. `scripts/patch_hunyuan_cuda.py` does that.
+- TRELLIS.2 stays a 5090-class quality path. It hangs after texture sampling in remesh/`to_glb`.
+- Hunyuan Paint on T4: CUDA `torch.load`, skip Delight, then move leftover modules onto GPU. CPU load of the Paint UNet kills Colab RAM.
 
 ## Layout
 
 ```
-pipelines/run_t2i.py      Pipeline A
-pipelines/run_img2glb.py  Pipeline B
-scripts/setup_a.sh        create .venv-a
-scripts/setup_b.sh        create .venv-b + clone/patch TripoSR
-scripts/session_a.sh      activate A
-scripts/session_b.sh      activate B
+pipelines/run_t2i.py              Pipeline A
+pipelines/run_hunyuan_shape.py    Pipeline B (working Hunyuan)
+pipelines/run_hunyuan_paint.py    Hunyuan Paint turbo (CUDA load, skip Delight)
+scripts/setup_a.sh
+scripts/setup_b.sh                clone Hunyuan + CUDA patch
+scripts/session_a.sh
+scripts/session_b.sh
+scripts/patch_hunyuan_cuda.py
+scripts/common.sh
 requirements-a.txt
 requirements-b.txt
 ```
