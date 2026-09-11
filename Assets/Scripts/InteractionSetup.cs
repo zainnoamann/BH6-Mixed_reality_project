@@ -25,32 +25,7 @@ public class InteractionSetup : MonoBehaviour
             if (objectRoot == null)
                 continue;
 
-            // Add interaction to the furniture/object parent.
-            if (objectRoot.GetComponent<ObjectInteraction>() == null)
-            {
-                objectRoot.gameObject.AddComponent<ObjectInteraction>();
-            }
-
-            // Add colliders to the actual mesh objects.
-            MeshFilter[] meshFilters =
-                objectRoot.GetComponentsInChildren<MeshFilter>();
-
-            foreach (MeshFilter meshFilter in meshFilters)
-            {
-                if (meshFilter.sharedMesh == null)
-                    continue;
-
-                GameObject meshObject = meshFilter.gameObject;
-
-                if (meshObject.GetComponent<Collider>() == null)
-                {
-                    MeshCollider meshCollider =
-                        meshObject.AddComponent<MeshCollider>();
-
-                    meshCollider.sharedMesh =
-                        meshFilter.sharedMesh;
-                }
-            }
+            Prepare(objectRoot);
 
             count++;
 
@@ -64,5 +39,42 @@ public class InteractionSetup : MonoBehaviour
             "Interaction setup complete. Objects prepared: " +
             count
         );
+    }
+
+    /// <summary>
+    /// Makes one object selectable: interaction component plus colliders on its meshes.
+    /// Extracted from SetupObjects so objects created at runtime get the same treatment.
+    /// </summary>
+    public void Prepare(Transform objectRoot)
+    {
+        if (objectRoot == null)
+            return;
+
+        // Add interaction to the furniture/object parent.
+        if (objectRoot.GetComponent<ObjectInteraction>() == null)
+        {
+            objectRoot.gameObject.AddComponent<ObjectInteraction>();
+        }
+
+        // Add colliders to the actual mesh objects.
+        MeshFilter[] meshFilters =
+            objectRoot.GetComponentsInChildren<MeshFilter>();
+
+        foreach (MeshFilter meshFilter in meshFilters)
+        {
+            if (meshFilter.sharedMesh == null)
+                continue;
+
+            GameObject meshObject = meshFilter.gameObject;
+
+            if (meshObject.GetComponent<Collider>() == null)
+            {
+                MeshCollider meshCollider =
+                    meshObject.AddComponent<MeshCollider>();
+
+                meshCollider.sharedMesh =
+                    meshFilter.sharedMesh;
+            }
+        }
     }
 }

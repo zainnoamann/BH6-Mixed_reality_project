@@ -36,5 +36,10 @@ public class GenerationController : MonoBehaviour
         {
             loadingPopup.SetActive(false);
         }
+
+        if (AddItemFlow.Instance != null)
+        {
+            AddItemFlow.Instance.CancelGeneration();
+        }
     }
 }

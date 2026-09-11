@@ -31,8 +31,25 @@ public class MouseObjectSelector : MonoBehaviour
         if (Mouse.current == null || mainCamera == null)
             return;
 
+        // A click that lands on a panel must not also hit the room behind it.
+        if (UiInput.PointerOverUI)
+        {
+            ClearHover();
+            return;
+        }
+
         HandleHover();
         HandleSelection();
+    }
+
+    private void ClearHover()
+    {
+        if (hoveredObject != null && hoveredObject != selectedObject)
+        {
+            hoveredObject.SetHover(false);
+        }
+
+        hoveredObject = null;
     }
 
     private void HandleHover()

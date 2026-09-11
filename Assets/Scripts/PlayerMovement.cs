@@ -43,6 +43,17 @@ public class PlayerMovement : MonoBehaviour
         if (Keyboard.current == null)
             return;
 
+        // Typing a prompt must not walk the player across the room.
+        if (UiInput.KeyboardBlocked)
+        {
+            if (useGravity)
+            {
+                controller.Move(new Vector3(0f, ReadVertical(), 0f) * Time.deltaTime);
+            }
+
+            return;
+        }
+
         Vector3 move = ReadDirection();
 
         float speed = Keyboard.current.leftShiftKey.isPressed

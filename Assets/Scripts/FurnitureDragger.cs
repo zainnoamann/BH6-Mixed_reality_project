@@ -66,6 +66,10 @@ public class FurnitureDragger : MonoBehaviour
 
     private void Update()
     {
+        // "a grey chair" would otherwise trigger the G pickup shortcut.
+        if (UiInput.KeyboardBlocked || UiInput.PointerOverUI)
+            return;
+
         if (Keyboard.current == null || Mouse.current == null)
             return;
 

@@ -37,20 +37,8 @@ public class SelectionUIController : MonoBehaviour
 
         selectionPanel.SetActive(true);
         
-        RectTransform panelRect =
-            selectionPanel.GetComponent<RectTransform>();
-
-        if (panelRect != null)
-        {
-            panelRect.position =
-                    screenPosition +
-                    new Vector3(
-                        normalPanelPosition.x,
-                        normalPanelPosition.y,
-                        0
-                    );
-        }
-
+        // The panel stays where it is anchored. Moving it per selection made each step
+        // of the flow appear somewhere different, which read as the UI jumping around.
         objectInfoText.text = "Selected: " + objectName;
 
         if (promptInputField != null)
@@ -82,23 +70,31 @@ public class SelectionUIController : MonoBehaviour
             return;
         }
 
-        // Hide the selection UI
-        // selectionPanel.SetActive(false);
+        selectionPanel.SetActive(false);
 
-        RectTransform selectionRect =
-            selectionPanel.GetComponent<RectTransform>();
+        AddItemFlow flow = AddItemFlow.Instance;
 
-        RectTransform loadingRect =
-            loadingPopup.GetComponent<RectTransform>();
-
-        if (selectionRect != null && loadingRect != null)
+        if (flow == null)
         {
-            loadingRect.position =
-                selectionRect.position + new Vector3(125f, 0f, 0f);
+            // No flow in the scene: fall back to the old behaviour so the UI still responds.
+            loadingPopup.SetActive(true);
+            return;
         }
 
-        // Show the loading popup
-        loadingPopup.SetActive(true);
+        if (isNewItem)
+        {
+            flow.GenerateImage(prompt);
+        }
+        else
+        {
+            // Editing an existing object is not part of this milestone.
+            if (statusText != null)
+            {
+                statusText.text = "Status: use Menu > New Item to generate an object.";
+            }
+
+            selectionPanel.SetActive(true);
+        }
     }
 
     public void HidePanel()
@@ -116,13 +112,6 @@ public class SelectionUIController : MonoBehaviour
         isNewItem = true;
 
         selectionPanel.SetActive(true);
-
-        RectTransform panelRect = selectionPanel.GetComponent<RectTransform>();
-
-        if (panelRect != null)
-        {
-            panelRect.anchoredPosition = newItemPanelPosition;
-        }
 
         if (objectInfoText != null)
         {

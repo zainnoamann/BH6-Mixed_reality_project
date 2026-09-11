@@ -26,23 +26,14 @@ public class ImagePreviewController : MonoBehaviour
     {
         Debug.Log("Image regeneration requested.");
 
-        if (imagePreviewPanel != null && loadingPopup != null)
-        {
-            RectTransform panelRect =
-                imagePreviewPanel.GetComponent<RectTransform>();
-
-            RectTransform loadingRect =
-                loadingPopup.GetComponent<RectTransform>();
-
-            if (panelRect != null && loadingRect != null)
-            {
-                loadingRect.anchoredPosition = panelRect.anchoredPosition;
-            }
-        }
-
         if (loadingPopup != null)
         {
             loadingPopup.SetActive(true);
+        }
+
+        if (AddItemFlow.Instance != null)
+        {
+            AddItemFlow.Instance.RegenerateImage();
         }
     }
 
@@ -50,23 +41,14 @@ public class ImagePreviewController : MonoBehaviour
     {
         Debug.Log("3D generation requested.");
 
-        if (imagePreviewPanel != null && loadingPopup != null)
-        {
-            RectTransform panelRect =
-                imagePreviewPanel.GetComponent<RectTransform>();
-
-            RectTransform loadingRect =
-                loadingPopup.GetComponent<RectTransform>();
-
-            if (panelRect != null && loadingRect != null)
-            {
-                loadingRect.anchoredPosition = panelRect.anchoredPosition;
-            }
-        }
-
         if (loadingPopup != null)
         {
             loadingPopup.SetActive(true);
+        }
+
+        if (AddItemFlow.Instance != null)
+        {
+            AddItemFlow.Instance.GenerateModel();
         }
     }
 
@@ -78,5 +60,10 @@ public class ImagePreviewController : MonoBehaviour
         }
 
         Debug.Log("Image preview cancelled.");
+
+        if (AddItemFlow.Instance != null)
+        {
+            AddItemFlow.Instance.CancelPreview();
+        }
     }
 }

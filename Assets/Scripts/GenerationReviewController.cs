@@ -15,8 +15,10 @@ public class GenerationReviewController : MonoBehaviour
             reviewPanel.SetActive(false);
         }
 
-        // TODO:
-        // Keep the generated result once AI/backend integration is available.
+        if (AddItemFlow.Instance != null)
+        {
+            AddItemFlow.Instance.AcceptResult();
+        }
     }
 
     public void UndoGeneration()
@@ -28,35 +30,24 @@ public class GenerationReviewController : MonoBehaviour
             reviewPanel.SetActive(false);
         }
 
-        // TODO:
-        // Restore the previous object state once generation is integrated.
+        if (AddItemFlow.Instance != null)
+        {
+            AddItemFlow.Instance.UndoResult();
+        }
     }
 
     public void Regenerate()
     {
         Debug.Log("Regeneration requested.");
 
-        if (reviewPanel != null && loadingPopup != null)
-        {
-            RectTransform reviewRect =
-                reviewPanel.GetComponent<RectTransform>();
-
-            RectTransform loadingRect =
-                loadingPopup.GetComponent<RectTransform>();
-
-            if (reviewRect != null && loadingRect != null)
-            {
-                loadingRect.position =
-                    reviewRect.position + new Vector3(125f, 0f, 0f);
-            }
-        }
-
         if (loadingPopup != null)
         {
             loadingPopup.SetActive(true);
         }
 
-        // TODO:
-        // Trigger a new AI generation request once the backend is connected.
+        if (AddItemFlow.Instance != null)
+        {
+            AddItemFlow.Instance.RegenerateResult();
+        }
     }
 }
