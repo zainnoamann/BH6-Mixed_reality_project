@@ -10,3 +10,9 @@ shape.glb
 textured.glb
 prompt_embeds.pt
 .DS_Store
+# server runtime
+.venv-server/
+jobs/
+logs/
+prompt_embeds/
+status.json

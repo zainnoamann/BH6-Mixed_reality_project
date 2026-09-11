@@ -37,6 +37,11 @@ sys.path.insert(0, str(HY3D))
 SIZE = 512
 
 
+def progress(value: float, stage: str) -> None:
+    """Lines the server parses into job stage + percent."""
+    print(f"##PROGRESS {max(0.0, min(1.0, value)):.3f} {stage}", flush=True)
+
+
 def _resolve(name: str) -> Path:
     for base in (ROOT, CONTENT):
         path = base / name
@@ -140,6 +145,7 @@ def main() -> None:
     if not torch.cuda.is_available():
         raise SystemExit("CUDA required")
 
+    progress(0.05, "Preparing paint")
     force_cuda_load()
     patch_multiview(args.steps)
     skip_delight()
@@ -148,10 +154,12 @@ def main() -> None:
     from hy3dgen.texgen.differentiable_renderer.mesh_render import MeshRender
 
     print("device", torch.cuda.get_device_name(0), flush=True)
+    progress(0.15, "Loading mesh")
     mesh = load_mesh(args.shape)
     image = Image.open(args.image).convert("RGBA")
     print("faces", int(mesh.faces.shape[0]), "image", image.size, "steps", args.steps, flush=True)
 
+    progress(0.25, "Loading paint model")
     pipeline = Hunyuan3DPaintPipeline.from_pretrained(
         "tencent/Hunyuan3D-2",
         subfolder="hunyuan3d-paint-v2-0-turbo",
@@ -162,9 +170,13 @@ def main() -> None:
     pipeline.render = MeshRender(default_resolution=SIZE, texture_size=SIZE)
     print("from_pretrained done", flush=True)
 
+    progress(0.40, f"Baking texture ({args.steps} steps)")
     textured = pipeline(mesh, image=image)
+
+    progress(0.92, "Writing textured GLB")
     args.out.parent.mkdir(parents=True, exist_ok=True)
     textured.export(str(args.out))
+    progress(1.0, "Texture ready")
     print("done ->", args.out, "bytes", args.out.stat().st_size, flush=True)
     drive = Path("/content/drive/MyDrive/creativetwin")
     if drive.is_dir():
@@ -177,4 +189,8 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as exc:  # make failures visible to the server log
+        print(f"##ERROR {type(exc).__name__}: {exc}", flush=True)
+        raise

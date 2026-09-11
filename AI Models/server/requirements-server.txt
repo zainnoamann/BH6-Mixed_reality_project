@@ -1,0 +1,5 @@
+# The HTTP layer only. Installed into .venv-server; never into .venv-a or .venv-b.
+fastapi>=0.110
+uvicorn[standard]>=0.29
+pydantic>=2
+huggingface_hub
