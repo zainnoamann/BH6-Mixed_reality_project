@@ -7,7 +7,7 @@ Two **separate** Python environments. Never install A and B into the same venv, 
 | Job | text → `image.png` | `image.png` → `shape.glb` |
 | Model | FLUX.2-klein-4B GGUF Q8 | Hunyuan3D-2mini-Turbo (shape only) |
 | Why | Fits a T4 if you encode, drop Qwen, then denoise | TRELLIS.2 hangs in `to_glb`. TripoSR finished but mesh quality was poor. Hunyuan shape on Colab T4 produced the chair we use in Unity. |
-| Texture | | Hunyuan Paint turbo bake (`textured.glb`) on Colab T4, or **Unity URP Lit** + a tileable wood/fabric PNG to swap materials without a second bake. |
+| Texture | | Hunyuan Paint turbo bake (`textured.glb`) on Colab T4, or **Unity URP Lit** + a tileable wood/fabric PNG to swap materials without a second bake. Windows Hunyuan uses PyTorch `2.7.1+cu128` with CUDA Toolkit `12.8` and Visual Studio 2022. |
 
 Copy **this `AI Models/` directory** onto Colab (`/content/...`) or SageMaker. A Mac cannot host these CUDA models.
 

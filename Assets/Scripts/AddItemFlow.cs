@@ -44,6 +44,7 @@ public class AddItemFlow : MonoBehaviour
     [SerializeField] private TMP_Text imageStatusText;
     [SerializeField] private TMP_Text resultStatusText;
     [SerializeField] private TMP_Text statusText;
+    [SerializeField] private Image generatedImageGraphic;
 
     [Header("Placement")]
     [Tooltip("Height of a generated object as a fraction of the room's ceiling height.")]
@@ -130,7 +131,11 @@ public class AddItemFlow : MonoBehaviour
         if (generatedImage == null && imagePreviewPanel != null)
         {
             GameObject go = Find("GeneratedImage");
-            if (go != null) generatedImage = go.GetComponent<RawImage>();
+            if (go != null)
+            {
+                generatedImage = go.GetComponent<RawImage>();
+                generatedImageGraphic = go.GetComponent<Image>();
+            }
         }
 
         if (loadingFill == null)
@@ -303,6 +308,11 @@ public class AddItemFlow : MonoBehaviour
 
         ShowLoading("Generating image");
 
+        if (useAiServer && !aiReady)
+        {
+            yield return CheckHealth();
+        }
+
         if (!aiReady)
         {
             yield return Simulate(imageWaitSeconds, PlaceholderImageStages);
@@ -365,6 +375,21 @@ public class AddItemFlow : MonoBehaviour
                 // Placeholder mode: a flat colour stands in for the generated image.
                 generatedImage.texture = null;
                 generatedImage.color = previewColour;
+            }
+        }
+
+        if (generatedImageGraphic != null)
+        {
+            if (texture != null)
+            {
+                generatedImageGraphic.sprite = Sprite.Create(
+                    texture, new Rect(0f, 0f, texture.width, texture.height), new Vector2(0.5f, 0.5f));
+                generatedImageGraphic.color = Color.white;
+            }
+            else
+            {
+                generatedImageGraphic.sprite = null;
+                generatedImageGraphic.color = previewColour;
             }
         }
 
@@ -598,7 +623,8 @@ public class AddItemFlow : MonoBehaviour
             flow = null;
         }
 
-        if (!string.IsNullOrEmpty(jobId) && client != null && aiReady)
+        bool pipelineRunning = stage == Stage.ImageWait || stage == Stage.ModelWait;
+        if (pipelineRunning && !string.IsNullOrEmpty(jobId) && client != null && aiReady)
         {
             StartCoroutine(client.CancelJob(jobId));
         }

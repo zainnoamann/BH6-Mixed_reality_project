@@ -191,6 +191,9 @@ def run_pipeline(job: Job, argv: list[str], phase: str, on_success: str,
         env["PYTHONPATH"] = str(ROOT / "deps" / "Hunyuan3D-2") + os.pathsep + env.get("PYTHONPATH", "")
         env.setdefault("HY3DGEN_MODELS", str(ROOT / "hf_cache" / "hy3dgen"))
         env.setdefault("TORCH_CUDA_ARCH_LIST", read_status().get("archList", ""))
+        torch_lib = Path(python).parent.parent / "Lib" / "site-packages" / "torch" / "lib"
+        cuda_bin = Path(os.environ.get("CUDA_PATH", "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.8")) / "bin"
+        env["PATH"] = os.pathsep.join((str(cuda_bin), str(torch_lib), env.get("PATH", "")))
 
     with RUN_LOCK:
         if job.status == "cancelled":

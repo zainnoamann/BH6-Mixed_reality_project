@@ -1,5 +1,7 @@
 # Pipeline B: image.png -> shape.glb (Hunyuan3D-2mini-Turbo)
-# Do not mix with .venv-a. Do not pip install torch; reuse Colab/SageMaker CUDA torch.
+# Do not mix with .venv-a. Stable Windows CUDA toolchain for Hunyuan extensions.
+torch==2.7.1+cu128
+torchvision==0.22.1+cu128
 huggingface_hub
 transformers>=4.48.0,<5
 diffusers>=0.30.0,<0.35
@@ -11,6 +13,7 @@ Pillow
 numpy
 tqdm
 opencv-python
+scikit-image
 trimesh
 pygltflib
 xatlas

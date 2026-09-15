@@ -169,12 +169,18 @@ def ensure_venv(name: str) -> Path:
     return python
 
 
-def install_torch(python: Path, cuda_tag: str) -> None:
-    code = subprocess.run([str(python), "-c", "import torch; print(torch.__version__)"], capture_output=True).returncode
-    if code == 0:
-        log(f"torch already installed in {python.parent.parent.name}")
+def install_torch(python: Path, cuda_tag: str, expected: str | None = None) -> None:
+    check = subprocess.run(
+        [str(python), "-c", "import torch; print(torch.__version__)"],
+        capture_output=True, text=True,
+    )
+    installed = check.stdout.strip() if check.returncode == 0 else ""
+    required = f"{expected}+{cuda_tag}" if expected else None
+    if installed and (required is None or installed == required):
+        log(f"torch {installed} already installed in {python.parent.parent.name}")
         return
-    run([python, "-m", "pip", "install", "torch", "torchvision",
+    version_args = [f"torch=={expected}+{cuda_tag}", f"torchvision==0.22.1+{cuda_tag}"] if expected else ["torch", "torchvision"]
+    run([python, "-m", "pip", "install", "--force-reinstall", *version_args,
          "--index-url", f"https://download.pytorch.org/whl/{cuda_tag}"])
 
 
@@ -224,7 +230,7 @@ def build_texgen_kernels(python_b: Path) -> None:
             log(f"paint kernels: {rel} not in the clone; skipping", level="WARN")
             continue
         log(f"paint kernels: building {rel.name}")
-        code = run([python_b, "-m", "pip", "install", "-e", str(target), "--no-deps"],
+        code = run([python_b, "-m", "pip", "install", "-e", str(target), "--no-deps", "--no-build-isolation"],
                    check=False)
         if code != 0:
             log(f"paint kernels: {rel.name} failed to build - texture baking will be unavailable, shape still works", level="WARN")
@@ -399,7 +405,7 @@ def main(argv: list[str] | None = None) -> int:
         install_requirements(python_a, ROOT / "requirements-a.txt")
 
         python_b = ensure_venv(".venv-b")
-        install_torch(python_b, cuda_tag)
+        install_torch(python_b, cuda_tag, expected="2.7.1")
         install_requirements(python_b, ROOT / "requirements-b.txt")
 
         ensure_hunyuan(python_b)

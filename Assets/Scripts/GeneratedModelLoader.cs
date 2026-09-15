@@ -52,6 +52,10 @@ public static class GeneratedModelLoader
                     UnityEngine.Object.Destroy(result);
                     result = null;
                 }
+                else if (image != null)
+                {
+                    ApplyPreviewMaterial(result, image);
+                }
             }
             else
             {
@@ -101,6 +105,30 @@ public static class GeneratedModelLoader
         block.GetComponent<Renderer>().material = material;
 
         return block;
+    }
+
+    private static void ApplyPreviewMaterial(GameObject target, Texture2D image)
+    {
+        Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+        if (shader == null)
+        {
+            shader = Shader.Find("Standard");
+        }
+
+        foreach (Renderer renderer in target.GetComponentsInChildren<Renderer>(true))
+        {
+            Material material = renderer.material;
+            if (material == null)
+            {
+                material = new Material(shader);
+            }
+
+            if (material.HasProperty("_BaseMap")) material.SetTexture("_BaseMap", image);
+            material.mainTexture = image;
+            if (material.HasProperty("_BaseColor")) material.SetColor("_BaseColor", Color.white);
+            material.color = Color.white;
+            renderer.material = material;
+        }
     }
 
     /// <summary>Uniformly scales the object so its renderer bounds are targetHeight tall.</summary>

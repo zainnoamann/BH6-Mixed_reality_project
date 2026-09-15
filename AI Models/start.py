@@ -8,6 +8,7 @@ Unity talks to http://127.0.0.1:8765 by default (change AiClient.baseUrl if you 
 on another PC on the network).
 """
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -38,8 +39,7 @@ def main() -> int:
         print("server virtualenv missing; run: python bootstrap.py")
         return 1
 
-    os.execv(str(server_python), [str(server_python), str(server)])
-    return 0
+    return subprocess.call([str(server_python), str(server)], cwd=str(ROOT))
 
 
 if __name__ == "__main__":
