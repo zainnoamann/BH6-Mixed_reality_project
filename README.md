@@ -1,29 +1,3 @@
-# CreativeTwin
-
-**AI + XR for Interactive 3D Interior Customisation**
-
-COSC2476 Mixed Reality (2650) · Milestone 1 · 11 August 2026
-
-## Overview
-
-CreativeTwin is a prototype that lets users customise a 3D interior using natural-language AI requests and review the results immersively in XR. Instead of manually editing materials and objects through repetitive clicks and flat 2D previews, users can describe the change they want (e.g. *"Make this wall a warm Scandinavian wood texture"*), have AI generate the update, and explore the result spatially.
-
-## The Problem
-
-Traditional interior customisation workflows are:
-- **Manual and repetitive** — every material or object change requires direct editing
-- **Slow to compare** — exploring different styles and variations is difficult and time-consuming
-- **Non-immersive** — feedback is limited to flat 2D previews, not spatial review
-
-CreativeTwin aims to replace this with natural-language prompts, instant AI-generated variations, and immersive spatial review.
-
-## Project Vision
-
-The pipeline moves from a raw 3D model to an AI-assisted XR experience in five stages:
-
-```
-Standardized 3D Model → Semantic Scene → AI Customisation → Unity Runtime → XR Review
-```
 
 1. **Standardized 3D Model** — a common input baseline
 2. **Semantic Scene** — the model is converted into a scene with identifiable objects and categories
