@@ -52,6 +52,7 @@ public class AiClient : MonoBehaviour
         public float elapsedSeconds;
         public string imageUrl;
         public string modelUrl;
+        public bool textured;
 
         public bool IsRunning => status == "queued" || status == "running";
         public bool IsFailed => status == "failed" || status == "cancelled";
@@ -77,9 +78,9 @@ public class AiClient : MonoBehaviour
         yield return Send(UnityWebRequest.Get(Url("/health")), ok, fail);
     }
 
-    public IEnumerator StartImageJob(string prompt, Action<JobInfo> ok, Action<string> fail)
+    public IEnumerator StartImageJob(string prompt, Action<JobInfo> ok, Action<string> fail, string operation = "add")
     {
-        string body = JsonUtility.ToJson(new GeneratePayload { prompt = prompt });
+        string body = JsonUtility.ToJson(new GeneratePayload { prompt = prompt, operation = operation });
         yield return Send(Post("/generate", body), ok, fail);
     }
 

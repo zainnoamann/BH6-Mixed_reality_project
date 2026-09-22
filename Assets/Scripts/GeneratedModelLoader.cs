@@ -21,7 +21,8 @@ public static class GeneratedModelLoader
         Color fallbackColour,
         string name,
         float targetHeight,
-        Action<GameObject> done)
+        Action<GameObject> done,
+        bool keepImportedMaterials = false)
     {
         GameObject result = null;
 
@@ -52,9 +53,11 @@ public static class GeneratedModelLoader
                     UnityEngine.Object.Destroy(result);
                     result = null;
                 }
-                else if (image != null)
+                else if (!keepImportedMaterials)
                 {
-                    ApplyPreviewMaterial(result, image);
+                    // Always assign a new URP Lit material. Mutating the glTFast
+                    // shader in place (looking for _BaseMap) leaves Hunyuan meshes grey.
+                    ApplyLook(result, image, fallbackColour);
                 }
             }
             else
@@ -88,26 +91,48 @@ public static class GeneratedModelLoader
     {
         GameObject block = GameObject.CreatePrimitive(PrimitiveType.Cube);
         block.name = name;
-
-        Shader shader = Shader.Find("Universal Render Pipeline/Lit");
-        Material material = new Material(shader != null ? shader : Shader.Find("Standard"));
-
-        if (image != null)
-        {
-            if (material.HasProperty("_BaseMap")) material.SetTexture("_BaseMap", image);
-            material.mainTexture = image;
-            colour = Color.white;
-        }
-
-        if (material.HasProperty("_BaseColor")) material.SetColor("_BaseColor", colour);
-        material.color = colour;
-
-        block.GetComponent<Renderer>().material = material;
-
+        ApplyLook(block, image, colour);
         return block;
     }
 
-    private static void ApplyPreviewMaterial(GameObject target, Texture2D image)
+    /// <summary>
+    /// Puts a new URP Lit look on every renderer. Used for generated meshes and for
+    /// Change Texture on an object that is already in the room. Does not rebuild geometry.
+    /// Flowers vs vase only stay separate if they are already different objects.
+    /// </summary>
+    public static void ApplyLook(GameObject target, Texture2D image, Color fallbackColour)
+    {
+        if (target == null)
+        {
+            return;
+        }
+
+        Material material = CreateLook(image, fallbackColour);
+
+        foreach (Renderer renderer in target.GetComponentsInChildren<Renderer>(true))
+        {
+            if (renderer == null)
+            {
+                continue;
+            }
+
+            Material[] slots = renderer.sharedMaterials;
+            if (slots == null || slots.Length == 0)
+            {
+                renderer.sharedMaterial = material;
+                continue;
+            }
+
+            for (int i = 0; i < slots.Length; i++)
+            {
+                slots[i] = material;
+            }
+
+            renderer.sharedMaterials = slots;
+        }
+    }
+
+    public static Material CreateLook(Texture2D image, Color fallbackColour)
     {
         Shader shader = Shader.Find("Universal Render Pipeline/Lit");
         if (shader == null)
@@ -115,20 +140,21 @@ public static class GeneratedModelLoader
             shader = Shader.Find("Standard");
         }
 
-        foreach (Renderer renderer in target.GetComponentsInChildren<Renderer>(true))
-        {
-            Material material = renderer.material;
-            if (material == null)
-            {
-                material = new Material(shader);
-            }
+        Material material = new Material(shader);
 
+        if (image != null)
+        {
             if (material.HasProperty("_BaseMap")) material.SetTexture("_BaseMap", image);
             material.mainTexture = image;
-            if (material.HasProperty("_BaseColor")) material.SetColor("_BaseColor", Color.white);
-            material.color = Color.white;
-            renderer.material = material;
+            fallbackColour = Color.white;
+            if (material.HasProperty("_Metallic")) material.SetFloat("_Metallic", 0f);
+            if (material.HasProperty("_Smoothness")) material.SetFloat("_Smoothness", 0.25f);
         }
+
+        if (material.HasProperty("_BaseColor")) material.SetColor("_BaseColor", fallbackColour);
+        material.color = fallbackColour;
+
+        return material;
     }
 
     /// <summary>Uniformly scales the object so its renderer bounds are targetHeight tall.</summary>

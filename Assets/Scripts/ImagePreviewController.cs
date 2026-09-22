@@ -39,7 +39,7 @@ public class ImagePreviewController : MonoBehaviour
 
     public void Generate3D()
     {
-        Debug.Log("3D generation requested.");
+        Debug.Log("Preview accepted (Generate 3D or Apply to object).");
 
         if (loadingPopup != null)
         {
