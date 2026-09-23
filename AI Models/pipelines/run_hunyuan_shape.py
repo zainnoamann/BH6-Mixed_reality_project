@@ -19,9 +19,36 @@ from __future__ import annotations
 
 import argparse
 import gc
+import importlib.metadata
 import os
 import sys
 from pathlib import Path
+
+
+def _configure_cuda_allocator() -> None:
+    """Set PYTORCH_CUDA_ALLOC_CONF before torch's first CUDA init.
+
+    expandable_segments is the right fix for '23 GiB free, cannot allocate 12 MiB'
+    on PyTorch 2.2+. Older builds reject that key and crash on get_device_name.
+    """
+    try:
+        ver = importlib.metadata.version("torch").split("+", 1)[0]
+        major, minor = (int(p) for p in ver.split(".")[:2])
+    except Exception:
+        major, minor = 0, 0
+    parts = [p.strip() for p in os.environ.get("PYTORCH_CUDA_ALLOC_CONF", "").split(",") if p.strip()]
+    supports_expandable = major > 2 or (major == 2 and minor >= 2)
+    if not supports_expandable:
+        parts = [p for p in parts if "expandable_segments" not in p]
+        if not any(p.startswith("max_split_size_mb") for p in parts):
+            parts.append("max_split_size_mb:128")
+    elif not any("expandable_segments" in p for p in parts):
+        parts.append("expandable_segments:True")
+    if parts:
+        os.environ["PYTORCH_CUDA_ALLOC_CONF"] = ",".join(parts)
+
+
+_configure_cuda_allocator()
 
 import torch
 from PIL import Image
@@ -43,6 +70,27 @@ SEED = 12345
 
 def progress(value: float, stage: str) -> None:
     print(f"##PROGRESS {max(0.0, min(1.0, value)):.3f} {stage}", flush=True)
+
+
+def _is_wsl() -> bool:
+    if os.environ.get("WSL_DISTRO_NAME"):
+        return True
+    try:
+        return "microsoft" in Path("/proc/version").read_text().lower()
+    except Exception:
+        return False
+
+
+def _move_pipeline_to_cuda(pipeline):
+    if hasattr(pipeline, "to"):
+        return pipeline.to("cuda")
+    for attr in ("model", "conditioner", "vae"):
+        part = getattr(pipeline, attr, None)
+        if part is not None and hasattr(part, "to"):
+            setattr(pipeline, attr, part.to("cuda"))
+    if hasattr(pipeline, "device"):
+        pipeline.device = torch.device("cuda")
+    return pipeline
 
 
 def load_image(path: Path):
@@ -78,6 +126,13 @@ def main() -> None:
     parser.add_argument("--steps", type=int, default=STEPS)
     parser.add_argument("--chunks", type=int, default=CHUNKS)
     parser.add_argument("--seed", type=int, default=SEED)
+    parser.add_argument(
+        "--load-device",
+        choices=("auto", "cuda", "cpu"),
+        default="auto",
+        help="Where convert() runs. auto = CPU on WSL (5090 CUDA convert OOMs "
+             "with 23 GiB free), CUDA elsewhere. steps/octree/chunks are unused until after load.",
+    )
     args = parser.parse_args()
 
     inp = Path(args.input)
@@ -97,15 +152,34 @@ def main() -> None:
 
     progress(0.05, "Loading mini-turbo")
     print("loading mini-turbo (no FlashVDM, no CPU offload)", flush=True)
+    print("torch", torch.__version__, "cuda", torch.version.cuda,
+          "alloc", os.environ.get("PYTORCH_CUDA_ALLOC_CONF", ""), flush=True)
 
-    # device="cuda" is the fix: the stock loader maps checkpoints to CPU and fills
-    # system RAM. scripts/patch_hunyuan_cuda.py patches the loader for the same reason.
-    pipeline = Hunyuan3DDiTFlowMatchingPipeline.from_pretrained(
-        "tencent/Hunyuan3D-2mini",
-        subfolder="hunyuan3d-dit-v2-mini-turbo",
-        use_safetensors=False,
-        device="cuda",
-    )
+    def load_pipeline(device: str):
+        return Hunyuan3DDiTFlowMatchingPipeline.from_pretrained(
+            "tencent/Hunyuan3D-2mini",
+            subfolder="hunyuan3d-dit-v2-mini-turbo",
+            use_safetensors=False,
+            device=device,
+        )
+
+    load_device = args.load_device
+    if load_device == "auto":
+        load_device = "cpu" if _is_wsl() else "cuda"
+    print("load_device", load_device, "(octree/steps/chunks unused until after this)", flush=True)
+
+    # CUDA convert() on WSL+5090 fails a 12 MiB alloc with ~23 GiB reported free.
+    # Convert on CPU, then move the finished module. Inference still uses the GPU.
+    if load_device == "cpu":
+        pipeline = _move_pipeline_to_cuda(load_pipeline("cpu"))
+    else:
+        try:
+            pipeline = load_pipeline("cuda")
+        except torch.cuda.OutOfMemoryError as exc:
+            print(f"cuda load OOM ({exc}); retrying CPU load then .to(cuda)", flush=True)
+            gc.collect()
+            torch.cuda.empty_cache()
+            pipeline = _move_pipeline_to_cuda(load_pipeline("cpu"))
     print("from_pretrained done", flush=True)
 
     image = load_image(inp)
