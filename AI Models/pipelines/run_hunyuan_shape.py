@@ -83,7 +83,8 @@ def _is_wsl() -> bool:
 
 def _move_pipeline_to_cuda(pipeline):
     if hasattr(pipeline, "to"):
-        return pipeline.to("cuda")
+        pipeline.to("cuda")
+        return pipeline
     for attr in ("model", "conditioner", "vae"):
         part = getattr(pipeline, attr, None)
         if part is not None and hasattr(part, "to"):
