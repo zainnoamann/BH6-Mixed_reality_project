@@ -1,26 +1,25 @@
 using UnityEngine;
-using UnityEngine.InputSystem;
 
 /// <summary>
-/// Pick furniture up and slide it along the floor.
+/// Picks up existing furniture and slides it along the floor.
 ///
-///   G       - pick up whatever is under the cursor, press again to place
-///   Mouse   - slide it along the floor
-///   Q / E   - rotate
-///   Escape  - cancel and put it back
+/// Desktop: point at a piece, press G, move the mouse, press G again to place,
+/// Q and E to rotate, Escape to cancel.
 ///
-/// Walls, floors, ceilings, windows and doors are refused, so the room shell
-/// cannot be dragged around by accident.
+/// Headset: point at a piece, squeeze the grip, move the controller, release to place.
+/// Twisting your wrist turns the object. The B button cancels.
+///
+/// Walls, floors, ceilings, windows and doors are refused, so the room shell cannot be
+/// dragged around by accident.
 /// </summary>
-
 public class FurnitureDragger : MonoBehaviour
 {
     [Header("References")]
-    [Tooltip("Assign the camera the player looks through.")]
     [SerializeField] private Camera viewCamera;
-
-    [Tooltip("Assign the object holding MouseObjectSelector.")]
     [SerializeField] private MouseObjectSelector selector;
+
+    [Tooltip("Leave empty to find the one in the scene.")]
+    [SerializeField] private PointerSource pointer;
 
     [Header("Placement")]
     [SerializeField] private float rotationStep = 15f;
@@ -44,6 +43,9 @@ public class FurnitureDragger : MonoBehaviour
     private float baseY;
     private bool blocked;
 
+    private float handYawAtGrab;
+    private float targetYawAtGrab;
+
     private Renderer[] heldRenderers;
     private Material[][] heldMaterials;
     private Material blockedMaterial;
@@ -52,6 +54,11 @@ public class FurnitureDragger : MonoBehaviour
 
     private void Awake()
     {
+        if (pointer == null)
+        {
+            pointer = PointerSource.Resolve();
+        }
+
         if (viewCamera == null)
         {
             viewCamera = Camera.main;
@@ -66,47 +73,48 @@ public class FurnitureDragger : MonoBehaviour
 
     private void Update()
     {
-        // "a grey chair" would otherwise trigger the G pickup shortcut.
-        if (UiInput.KeyboardBlocked || UiInput.PointerOverUI)
-            return;
-
-        if (Keyboard.current == null || Mouse.current == null)
+        if (pointer == null)
             return;
 
         if (held == null)
         {
-            if (Keyboard.current.gKey.wasPressedThisFrame)
+            if (pointer.GrabPressed && !UiInput.PointerOverUI)
             {
                 TryPickUp();
             }
+
             return;
         }
 
         Slide();
+        HandleRotation();
 
-        if (Keyboard.current.qKey.wasPressedThisFrame)
-        {
-            held.Rotate(Vector3.up, -rotationStep, Space.World);
-        }
-
-        if (Keyboard.current.eKey.wasPressedThisFrame)
-        {
-            held.Rotate(Vector3.up, rotationStep, Space.World);
-        }
-
-        if (Keyboard.current.escapeKey.wasPressedThisFrame)
+        if (pointer.CancelPressed)
         {
             held.SetPositionAndRotation(startPosition, startRotation);
             Release();
             return;
         }
 
-        if (Keyboard.current.gKey.wasPressedThisFrame ||
-            Keyboard.current.enterKey.wasPressedThisFrame)
+        // On the headset, releasing the grip places the object.
+        // On desktop, pressing G again places it.
+        bool placeNow = pointer.UsingXr
+            ? pointer.GrabReleased
+            : pointer.GrabPressed;
+
+        if (placeNow)
         {
             if (blocked)
             {
-                Debug.Log("That spot is blocked. Move it, or press Escape.");
+                Debug.Log("That spot is blocked. Move it, or cancel.");
+
+                if (pointer.UsingXr)
+                {
+                    // Do not strand the object in a bad spot on release.
+                    held.SetPositionAndRotation(startPosition, startRotation);
+                    Release();
+                }
+
                 return;
             }
 
@@ -118,12 +126,12 @@ public class FurnitureDragger : MonoBehaviour
 
     private void TryPickUp()
     {
-        Ray ray = viewCamera.ScreenPointToRay(
-            Mouse.current.position.ReadValue());
+        if (!pointer.TryGetRay(out Ray ray))
+            return;
 
         if (!Physics.Raycast(ray, out RaycastHit hit, rayDistance))
         {
-            Debug.Log("Point at a piece of furniture, then press G.");
+            Debug.Log("Point at a piece of furniture first.");
             return;
         }
 
@@ -150,6 +158,12 @@ public class FurnitureDragger : MonoBehaviour
         startRotation = held.rotation;
         baseY = GetBounds().min.y;
 
+        if (pointer.UsingXr && pointer.Hand != null)
+        {
+            handYawAtGrab = pointer.Hand.eulerAngles.y;
+            targetYawAtGrab = held.eulerAngles.y;
+        }
+
         // Let the selector restore its own materials before we cache them.
         heldInteraction.SetHover(false);
         heldInteraction.SetSelected(false);
@@ -164,22 +178,24 @@ public class FurnitureDragger : MonoBehaviour
 
     private void Slide()
     {
-        Ray ray = viewCamera.ScreenPointToRay(
-            Mouse.current.position.ReadValue());
-
-        Plane floorPlane = new Plane(Vector3.up, new Vector3(0f, baseY, 0f));
-
-        if (floorPlane.Raycast(ray, out float distance))
+        if (pointer.TryGetRay(out Ray ray))
         {
-            Vector3 target = ray.GetPoint(distance);
-            Bounds bounds = GetBounds();
+            Plane floorPlane =
+                new Plane(Vector3.up, new Vector3(0f, baseY, 0f));
 
-            // Follow the base of the bounding box rather than the pivot,
-            // because imported models often have the pivot far off centre.
-            Vector3 offset = held.position - new Vector3(
-                bounds.center.x, bounds.min.y, bounds.center.z);
+            if (floorPlane.Raycast(ray, out float distance) &&
+                distance < 500f)
+            {
+                Vector3 target = ray.GetPoint(distance);
+                Bounds bounds = GetBounds();
 
-            held.position = target + offset;
+                // Follow the base of the bounding box rather than the pivot,
+                // because imported models often have the pivot far off centre.
+                Vector3 offset = held.position - new Vector3(
+                    bounds.center.x, bounds.min.y, bounds.center.z);
+
+                held.position = target + offset;
+            }
         }
 
         bool nowBlocked = !IsPlacementValid();
@@ -188,6 +204,39 @@ public class FurnitureDragger : MonoBehaviour
         {
             blocked = nowBlocked;
             ShowBlocked(blocked);
+        }
+    }
+
+    private void HandleRotation()
+    {
+        if (pointer.UsingXr)
+        {
+            if (pointer.Hand == null)
+                return;
+
+            float delta = Mathf.DeltaAngle(
+                handYawAtGrab, pointer.Hand.eulerAngles.y);
+
+            Vector3 angles = held.eulerAngles;
+            angles.y = targetYawAtGrab + delta;
+
+            held.eulerAngles = angles;
+            return;
+        }
+
+        var keyboard = UnityEngine.InputSystem.Keyboard.current;
+
+        if (keyboard == null)
+            return;
+
+        if (keyboard.qKey.wasPressedThisFrame)
+        {
+            held.Rotate(Vector3.up, -rotationStep, Space.World);
+        }
+
+        if (keyboard.eKey.wasPressedThisFrame)
+        {
+            held.Rotate(Vector3.up, rotationStep, Space.World);
         }
     }
 

@@ -1,6 +1,12 @@
 using UnityEngine;
-using UnityEngine.InputSystem;
 
+/// <summary>
+/// Hover and select, driven by whatever pointer is active.
+///
+/// The class name is unchanged so existing scene references keep working, but it is no
+/// longer mouse specific. On desktop the ray comes from the cursor. On the headset it
+/// comes out of the right controller and select is the trigger.
+/// </summary>
 public class MouseObjectSelector : MonoBehaviour
 {
     [Header("Raycast")]
@@ -8,10 +14,20 @@ public class MouseObjectSelector : MonoBehaviour
     [SerializeField] private LayerMask selectableLayer = ~0;
     [SerializeField] private float rayDistance = 100f;
 
+    [SerializeField] private SelectionUIController uiController;
+
+    [Header("XR")]
+    [Tooltip("Leave empty to find the one in the scene.")]
+    [SerializeField] private PointerSource pointer;
+
+    [Tooltip("Optional. A line renderer on the controller, shown as the aim ray.")]
+    [SerializeField] private LineRenderer aimLine;
+
     private ObjectInteraction hoveredObject;
     private ObjectInteraction selectedObject;
 
-    [SerializeField] private SelectionUIController uiController;
+    /// <summary>The current selection, so other scripts can read it.</summary>
+    public ObjectInteraction SelectedObject => selectedObject;
 
     private void Start()
     {
@@ -20,21 +36,28 @@ public class MouseObjectSelector : MonoBehaviour
             mainCamera = Camera.main;
         }
 
-        if (mainCamera == null)
+        if (pointer == null)
         {
-            Debug.LogError("Main Camera was not found.");
+            pointer = PointerSource.Resolve();
+        }
+
+        if (pointer == null)
+        {
+            Debug.LogError(
+                "PointerSource was not found. Add it to this object.");
         }
     }
 
     private void Update()
     {
-        if (Mouse.current == null || mainCamera == null)
+        if (pointer == null)
             return;
 
         // A click that lands on a panel must not also hit the room behind it.
         if (UiInput.PointerOverUI)
         {
             ClearHover();
+            DrawAim(null, Vector3.zero);
             return;
         }
 
@@ -53,21 +76,23 @@ public class MouseObjectSelector : MonoBehaviour
     }
 
     private void HandleHover()
-    {   
-        // Don't hover while rotating the camera
-    if (Mouse.current.rightButton.isPressed)
-        return;
-        
-        Ray ray = mainCamera.ScreenPointToRay(
-            Mouse.current.position.ReadValue()
-        );
-
-        if (Physics.Raycast(
-            ray,
-            out RaycastHit hit,
-            rayDistance,
-            selectableLayer))
+    {
+        // On desktop, do not hover while the right button is turning the camera.
+        if (!pointer.UsingXr &&
+            UnityEngine.InputSystem.Mouse.current != null &&
+            UnityEngine.InputSystem.Mouse.current.rightButton.isPressed)
         {
+            return;
+        }
+
+        if (!pointer.TryGetRay(out Ray ray))
+            return;
+
+        if (Physics.Raycast(ray, out RaycastHit hit,
+                            rayDistance, selectableLayer))
+        {
+            DrawAim(ray, hit.point);
+
             ObjectInteraction interaction =
                 hit.collider.GetComponentInParent<ObjectInteraction>();
 
@@ -87,19 +112,17 @@ public class MouseObjectSelector : MonoBehaviour
                     {
                         hoveredObject.SetHover(true);
                     }
-
-                    Debug.Log(
-                        "Hovering: " +
-                        hoveredObject.gameObject.name
-                    );
                 }
 
                 return;
             }
         }
+        else
+        {
+            DrawAim(ray, ray.origin + ray.direction * rayDistance);
+        }
 
-        if (hoveredObject != null &&
-            hoveredObject != selectedObject)
+        if (hoveredObject != null && hoveredObject != selectedObject)
         {
             hoveredObject.SetHover(false);
         }
@@ -109,14 +132,13 @@ public class MouseObjectSelector : MonoBehaviour
 
     private void HandleSelection()
     {
-        if (!Mouse.current.leftButton.wasPressedThisFrame)
+        if (!pointer.SelectPressed)
             return;
 
         if (hoveredObject == null)
             return;
 
-        if (selectedObject != null &&
-            selectedObject != hoveredObject)
+        if (selectedObject != null && selectedObject != hoveredObject)
         {
             selectedObject.SetSelected(false);
         }
@@ -126,20 +148,37 @@ public class MouseObjectSelector : MonoBehaviour
         selectedObject.SetHover(false);
         selectedObject.SetSelected(true);
 
-        Debug.Log(
-            "Selected: " +
-            selectedObject.gameObject.name
-        );
+        Debug.Log("Selected: " + selectedObject.gameObject.name);
 
         if (uiController != null)
         {
-            Vector3 screenPosition =
-                mainCamera.WorldToScreenPoint(
-                        selectedObject.transform.position
-                );
+            // ShowObject ignores this value, the panel stays anchored,
+            // but the signature is kept so nothing else has to change.
+            Vector3 screenPosition = mainCamera != null
+                ? mainCamera.WorldToScreenPoint(
+                    selectedObject.transform.position)
+                : Vector3.zero;
 
             uiController.ShowObject(
                 selectedObject.gameObject.name, screenPosition);
         }
+    }
+
+    /// <summary>Draws the controller aim ray so the user can see where they point.</summary>
+    private void DrawAim(Ray? ray, Vector3 end)
+    {
+        if (aimLine == null)
+            return;
+
+        if (ray == null || !pointer.UsingXr)
+        {
+            aimLine.enabled = false;
+            return;
+        }
+
+        aimLine.enabled = true;
+        aimLine.positionCount = 2;
+        aimLine.SetPosition(0, ray.Value.origin);
+        aimLine.SetPosition(1, end);
     }
 }

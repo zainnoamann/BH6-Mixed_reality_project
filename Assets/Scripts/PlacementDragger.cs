@@ -1,18 +1,26 @@
 using UnityEngine;
-using UnityEngine.EventSystems;
-using UnityEngine.InputSystem;
 
 /// <summary>
 /// Drags a newly generated object along the floor while it is being placed.
 ///
 /// Placement is uncommitted: the caller decides afterwards whether to keep the object
-/// (Accept) or throw it away (Undo / Regenerate). The drag itself is deliberately simple -
-/// project the cursor onto the floor plane, move the object there, keep it inside the room.
+/// (Accept) or throw it away (Undo / Regenerate).
+///
+/// Works with either pointer. On desktop, hold the left button and move the mouse.
+/// On the headset, hold the trigger and move the controller, and twist your wrist to
+/// turn the object. Wrist twist is used rather than the thumbstick because the
+/// thumbstick already drives movement and snap turn on the XR rig.
 /// </summary>
 public class PlacementDragger : MonoBehaviour
 {
     [Tooltip("Clearance kept between the object's footprint and the walls, in metres.")]
     [SerializeField] private float wallMargin = 0.05f;
+
+    [Tooltip("Leave empty to find the one in the scene.")]
+    [SerializeField] private PointerSource pointer;
+
+    [Tooltip("Turn the object by twisting the controller while dragging.")]
+    [SerializeField] private bool wristRotation = true;
 
     public bool IsActive { get; private set; }
     public Transform Target { get; private set; }
@@ -22,8 +30,19 @@ public class PlacementDragger : MonoBehaviour
     private Vector3 grabOffset;
     private bool dragging;
 
+    private float handYawAtGrab;
+    private float targetYawAtGrab;
+
     private Bounds room;
     private bool roomKnown;
+
+    private void Awake()
+    {
+        if (pointer == null)
+        {
+            pointer = PointerSource.Resolve();
+        }
+    }
 
     /// <summary>Puts the object in front of the player and starts accepting drags.</summary>
     public void Begin(Transform target, string roomRootName)
@@ -37,8 +56,16 @@ public class PlacementDragger : MonoBehaviour
             return;
         }
 
-        viewCamera = Camera.main;
-        roomKnown = RoomMetrics.TryMeasure(gameObject.scene, roomRootName, out room);
+        if (pointer == null)
+        {
+            pointer = PointerSource.Resolve();
+        }
+
+        viewCamera = pointer != null ? pointer.ViewCamera : Camera.main;
+
+        roomKnown = RoomMetrics.TryMeasure(
+            gameObject.scene, roomRootName, out room);
+
         floorY = roomKnown ? room.min.y : 0f;
 
         target.position = SpawnPoint();
@@ -56,7 +83,7 @@ public class PlacementDragger : MonoBehaviour
         Finish();
     }
 
-    /// <summary>On the floor, a little in front of the camera, clamped inside the room.</summary>
+    /// <summary>On the floor, a little in front of the viewer, clamped inside the room.</summary>
     private Vector3 SpawnPoint()
     {
         float lift = Height(Target) * 0.5f;
@@ -66,7 +93,8 @@ public class PlacementDragger : MonoBehaviour
             return new Vector3(0f, floorY + lift, 0f);
         }
 
-        Vector3 forward = Vector3.ProjectOnPlane(viewCamera.transform.forward, Vector3.up).normalized;
+        Vector3 forward = Vector3.ProjectOnPlane(
+            viewCamera.transform.forward, Vector3.up).normalized;
 
         if (forward.sqrMagnitude < 0.001f)
         {
@@ -81,49 +109,73 @@ public class PlacementDragger : MonoBehaviour
 
     private void Update()
     {
-        if (!IsActive || Target == null)
-        {
-            return;
-        }
-
-        Mouse mouse = Mouse.current;
-
-        if (mouse == null || viewCamera == null)
+        if (!IsActive || Target == null || pointer == null)
         {
             return;
         }
 
         // Clicks on the review panel must not start a drag.
-        bool overUI = EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
+        bool overUI = UiInput.PointerOverUI;
 
-        if (mouse.leftButton.wasPressedThisFrame && !overUI && TryFloorPoint(mouse, out Vector3 hit))
+        if (pointer.SelectPressed && !overUI &&
+            TryFloorPoint(out Vector3 hit))
         {
             dragging = true;
             grabOffset = Target.position - hit;
+
+            if (pointer.UsingXr && pointer.Hand != null)
+            {
+                handYawAtGrab = pointer.Hand.eulerAngles.y;
+                targetYawAtGrab = Target.eulerAngles.y;
+            }
         }
 
-        if (dragging && mouse.leftButton.isPressed && TryFloorPoint(mouse, out Vector3 point))
+        if (dragging && pointer.SelectHeld &&
+            TryFloorPoint(out Vector3 point))
         {
             Vector3 destination = point + grabOffset;
             destination.y = Target.position.y;
 
             Target.position = Contain(destination);
+
+            ApplyWristRotation();
         }
 
-        if (mouse.leftButton.wasReleasedThisFrame)
+        if (pointer.SelectReleased)
         {
             dragging = false;
         }
     }
 
-    private bool TryFloorPoint(Mouse mouse, out Vector3 point)
+    /// <summary>Turns the object as the controller is twisted.</summary>
+    private void ApplyWristRotation()
+    {
+        if (!wristRotation || !pointer.UsingXr || pointer.Hand == null)
+        {
+            return;
+        }
+
+        float delta = Mathf.DeltaAngle(
+            handYawAtGrab, pointer.Hand.eulerAngles.y);
+
+        Vector3 angles = Target.eulerAngles;
+        angles.y = targetYawAtGrab + delta;
+
+        Target.eulerAngles = angles;
+    }
+
+    private bool TryFloorPoint(out Vector3 point)
     {
         point = default;
 
-        Ray ray = viewCamera.ScreenPointToRay(mouse.position.ReadValue());
+        if (!pointer.TryGetRay(out Ray ray))
+        {
+            return false;
+        }
+
         Plane floor = new Plane(Vector3.up, new Vector3(0f, floorY, 0f));
 
-        // A camera with no pitch looks parallel to the floor and never intersects it.
+        // A ray parallel to the floor never intersects it.
         if (!floor.Raycast(ray, out float distance) || distance > 500f)
         {
             return false;
@@ -156,8 +208,11 @@ public class PlacementDragger : MonoBehaviour
         float minZ = room.min.z + half.z + wallMargin - offset.z;
         float maxZ = room.max.z - half.z - wallMargin - offset.z;
 
-        destination.x = Mathf.Clamp(destination.x, minX, Mathf.Max(minX, maxX));
-        destination.z = Mathf.Clamp(destination.z, minZ, Mathf.Max(minZ, maxZ));
+        destination.x = Mathf.Clamp(
+            destination.x, minX, Mathf.Max(minX, maxX));
+
+        destination.z = Mathf.Clamp(
+            destination.z, minZ, Mathf.Max(minZ, maxZ));
 
         return destination;
     }
@@ -168,7 +223,8 @@ public class PlacementDragger : MonoBehaviour
 
         bool found = false;
 
-        foreach (Renderer renderer in target.GetComponentsInChildren<Renderer>(true))
+        foreach (Renderer renderer in
+                 target.GetComponentsInChildren<Renderer>(true))
         {
             if (renderer == null)
             {
@@ -191,6 +247,8 @@ public class PlacementDragger : MonoBehaviour
 
     private static float Height(Transform target)
     {
-        return target != null && TryBounds(target, out Bounds bounds) ? bounds.size.y : 0.5f;
+        return target != null && TryBounds(target, out Bounds bounds)
+            ? bounds.size.y
+            : 0.5f;
     }
 }
