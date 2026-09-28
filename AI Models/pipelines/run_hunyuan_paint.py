@@ -136,6 +136,8 @@ def main() -> None:
     parser.add_argument("--shape", type=Path, default=_resolve("shape.glb"))
     parser.add_argument("--out", type=Path, default=_resolve("textured.glb"))
     parser.add_argument("--steps", type=int, default=30, help="30 is the run that finished; 10 is faster")
+    parser.add_argument("--max-faces", type=int, default=40000,
+                        help="reduce the mesh before paint; xatlas UV unwrap is very slow on 300k+ faces. 0 = off")
     args = parser.parse_args()
 
     if not args.image.exists():
@@ -156,6 +158,14 @@ def main() -> None:
     print("device", torch.cuda.get_device_name(0), flush=True)
     progress(0.15, "Loading mesh")
     mesh = load_mesh(args.shape)
+    faces_before = int(mesh.faces.shape[0])
+    if args.max_faces and faces_before > args.max_faces:
+        # Hunyuan's own demo reduces to 40k faces before Paint. Without this, the
+        # CPU UV unwrap (xatlas) on an octree-384 mesh takes most of the Paint time.
+        progress(0.18, f"Simplifying mesh ({faces_before} faces)")
+        from hy3dgen.shapegen.postprocessors import FaceReducer
+        mesh = FaceReducer()(mesh, max_facenum=args.max_faces)
+        print("faces reduced", faces_before, "->", int(mesh.faces.shape[0]), flush=True)
     image = Image.open(args.image).convert("RGBA")
     print("faces", int(mesh.faces.shape[0]), "image", image.size, "steps", args.steps, flush=True)
 
