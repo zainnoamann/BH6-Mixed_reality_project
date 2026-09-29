@@ -1,5 +1,7 @@
 using System;
 using System.Collections;
+using System.IO;
+using System.Linq;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -35,6 +37,10 @@ public class AddItemFlow : MonoBehaviour
     [Header("Placeholder mode (no server / no GPU)")]
     [SerializeField] private float imageWaitSeconds = 2f;
     [SerializeField] private float modelWaitSeconds = 6f;
+
+    [Tooltip("Folder under Assets/StreamingAssets with test .glb / .png files. A file whose name " +
+             "is in the prompt is used (\"a wooden chair\" picks chair.glb); otherwise they take turns.")]
+    [SerializeField] private string placeholderFolder = "Placeholders";
 
     [Header("Panels (optional - found by name when empty)")]
     [SerializeField] private GameObject loadingPopup;
@@ -408,7 +414,7 @@ public class AddItemFlow : MonoBehaviour
         if (!aiReady)
         {
             yield return Simulate(imageWaitSeconds, PlaceholderImageStages);
-            ShowImageReview(null);
+            ShowImageReview(LoadPlaceholderImage(prompt));
             yield break;
         }
 
@@ -513,7 +519,23 @@ public class AddItemFlow : MonoBehaviour
         if (!aiReady || string.IsNullOrEmpty(jobId))
         {
             yield return Simulate(modelWaitSeconds, PlaceholderModelStages);
-            EnterPlacement(BuildPlaceholder());
+
+            byte[] testGlb = LoadPlaceholderGlb(prompt);
+
+            if (testGlb == null)
+            {
+                EnterPlacement(BuildPlaceholder());
+                yield break;
+            }
+
+            // A real GLB through the real loader, so placement and selection behave
+            // exactly as they will with an AI result. Its own colours are kept.
+            GameObject testModel = null;
+            yield return GeneratedModelLoader.Load(
+                testGlb, previewImage, previewColour, "Generated: " + prompt, TargetHeight(),
+                g => testModel = g, keepImportedMaterials: true);
+
+            EnterPlacement(testModel);
             yield break;
         }
 
@@ -636,6 +658,62 @@ public class AddItemFlow : MonoBehaviour
             : 2.4f;
 
         return ceiling * objectHeightFraction;
+    }
+
+    // ------------------------------------------------------------------ offline test files
+
+    /// <summary>A .glb from StreamingAssets/Placeholders, or null to fall back to the block.</summary>
+    private byte[] LoadPlaceholderGlb(string description)
+    {
+        string path = PickPlaceholder(description, "*.glb");
+        return path != null ? File.ReadAllBytes(path) : null;
+    }
+
+    /// <summary>A .png / .jpg preview image, or null for a flat colour.</summary>
+    private Texture2D LoadPlaceholderImage(string description)
+    {
+        string path = PickPlaceholder(description, "*.png") ?? PickPlaceholder(description, "*.jpg");
+
+        if (path == null)
+        {
+            return null;
+        }
+
+        Texture2D texture = new Texture2D(2, 2);
+        return texture.LoadImage(File.ReadAllBytes(path)) ? texture : null;
+    }
+
+    private string PickPlaceholder(string description, string pattern)
+    {
+        string folder = Path.Combine(Application.streamingAssetsPath, placeholderFolder);
+
+        if (!Directory.Exists(folder))
+        {
+            return null;
+        }
+
+        string[] files = Directory.GetFiles(folder, pattern)
+            .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        if (files.Length == 0)
+        {
+            return null;
+        }
+
+        string lower = (description ?? string.Empty).ToLowerInvariant();
+
+        foreach (string file in files)
+        {
+            string name = Path.GetFileNameWithoutExtension(file).ToLowerInvariant();
+            if (lower.Contains(name))
+            {
+                return file;
+            }
+        }
+
+        // Only the model stage takes turns; an image with no matching name stays a flat colour.
+        return pattern == "*.glb" ? files[generatedCount % files.Length] : null;
     }
 
     private GameObject BuildPlaceholder()
