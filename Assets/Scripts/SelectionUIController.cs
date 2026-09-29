@@ -16,6 +16,7 @@ public class SelectionUIController : MonoBehaviour
     [SerializeField] private Vector2 newItemPanelPosition;
 
     private bool isNewItem = false;
+    private MouseObjectSelector selector;
     
 
     private void Start()
@@ -27,6 +28,8 @@ public class SelectionUIController : MonoBehaviour
         {
             generateButton.onClick.AddListener(OnGenerateClicked);
         }
+
+        selector = FindFirstObjectByType<MouseObjectSelector>();
     }
 
     public void ShowObject(string objectName, Vector3 screenPosition)
@@ -44,11 +47,16 @@ public class SelectionUIController : MonoBehaviour
         if (promptInputField != null)
         {
             promptInputField.text = "";
+            TMP_Text placeholder = promptInputField.placeholder as TMP_Text;
+            if (placeholder != null)
+            {
+                placeholder.text = "Describe the new look (e.g. red roses, oak wood)...";
+            }
         }
 
         if (statusText != null)
         {
-            statusText.text = "Status: Ready";
+            statusText.text = "Status: Change Texture — the mesh stays, only the look changes.";
         }
     }
 
@@ -84,17 +92,23 @@ public class SelectionUIController : MonoBehaviour
         if (isNewItem)
         {
             flow.GenerateImage(prompt);
+            return;
         }
-        else
+
+        ObjectInteraction selected = selector != null ? selector.Selected : null;
+
+        if (selected == null)
         {
-            // Editing an existing object is not part of this milestone.
             if (statusText != null)
             {
-                statusText.text = "Status: use Menu > New Item to generate an object.";
+                statusText.text = "Status: click an object in the room first.";
             }
 
             selectionPanel.SetActive(true);
+            return;
         }
+
+        flow.BeginTextureChange(prompt, selected);
     }
 
     public void HidePanel()
