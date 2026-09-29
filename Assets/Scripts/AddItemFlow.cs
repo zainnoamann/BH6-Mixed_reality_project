@@ -651,11 +651,23 @@ public class AddItemFlow : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// Starting height of a new item, in scene units: the real-world height for the object
+    /// named in the prompt ("a vase" = 40 cm, TypicalSizes), or a fraction of the ceiling
+    /// height when the prompt names nothing known. The user can Resize it afterwards.
+    /// </summary>
     private float TargetHeight()
     {
         float ceiling = RoomMetrics.TryMeasure(gameObject.scene, roomRootName, out Bounds room)
             ? room.size.y
             : 2.4f;
+
+        float metres = TypicalSizes.HeightFor(prompt);
+
+        if (metres > 0f)
+        {
+            return Mathf.Min(metres * TypicalSizes.UnitsPerMetre(ceiling), ceiling * 0.95f);
+        }
 
         return ceiling * objectHeightFraction;
     }

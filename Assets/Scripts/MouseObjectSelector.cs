@@ -8,6 +8,9 @@ using UnityEngine.InputSystem;
 ///   Click empty space    - deselect
 ///   Escape               - deselect
 ///
+/// Toolbar: Move (follows the mouse, sits on surfaces), Resize (scroll or + / -),
+/// Change Texture, Close.
+///
 /// Selecting does nothing else. Move and Change Texture are buttons on the toolbar,
 /// so the texture form no longer pops up on every click.
 /// Walls, floor, windows and doors (RoomShell) cannot be hovered or selected.
@@ -32,6 +35,7 @@ public class MouseObjectSelector : MonoBehaviour
 
     private SelectionToolbar toolbar;
     private PlacementDragger placer;
+    private string resizeHint;
 
     private void Start()
     {
@@ -53,11 +57,14 @@ public class MouseObjectSelector : MonoBehaviour
             placer = gameObject.AddComponent<PlacementDragger>();
         }
 
+        placer.SizeChanged += ShowSize;
+
         Transform canvas = FindScreenCanvas();
         if (canvas != null)
         {
             toolbar = SelectionToolbar.Create(canvas);
             toolbar.MoveClicked += MoveSelected;
+            toolbar.ResizeClicked += ResizeSelected;
             toolbar.TextureClicked += OpenTexturePanel;
             toolbar.CloseClicked += Deselect;
         }
@@ -103,6 +110,37 @@ public class MouseObjectSelector : MonoBehaviour
     public void MoveSelected()
     {
         StartMove(selectedObject);
+    }
+
+    /// <summary>Starts resizing the selected object (toolbar Resize button).</summary>
+    public void ResizeSelected()
+    {
+        ObjectInteraction target = selectedObject;
+
+        if (target == null || placer == null || placer.IsActive)
+            return;
+
+        if (uiController != null)
+        {
+            uiController.HideObjectPanel();
+        }
+
+        resizeHint = "Resizing " + target.gameObject.name;
+
+        bool started = placer.BeginResize(target.transform, roomRootName, committed =>
+        {
+            resizeHint = null;
+
+            if (target != null)
+            {
+                Select(target);
+            }
+        });
+
+        if (!started)
+        {
+            resizeHint = null;
+        }
     }
 
     /// <summary>Selects and moves whatever is under the cursor, or the selection (G key).</summary>
@@ -253,7 +291,7 @@ public class MouseObjectSelector : MonoBehaviour
         if (started && toolbar != null)
         {
             toolbar.ShowHint("Moving " + target.gameObject.name +
-                             ": click to place  |  Q / E or scroll to rotate  |  Esc to cancel");
+                             ": click to place  |  Q / E or scroll to rotate  |  + / - to resize  |  Esc to cancel");
         }
     }
 
@@ -264,6 +302,16 @@ public class MouseObjectSelector : MonoBehaviour
 
         Vector3 screenPosition = mainCamera.WorldToScreenPoint(selectedObject.transform.position);
         uiController.ShowObject(selectedObject.gameObject.name, screenPosition);
+    }
+
+    /// <summary>Live size while resizing, e.g. "Height 42 cm (120%)".</summary>
+    private void ShowSize(string size)
+    {
+        if (resizeHint == null || toolbar == null)
+            return;
+
+        toolbar.ShowHint(resizeHint + ": " + size +
+                         "  |  scroll or + / -  |  click to keep  |  Esc to cancel");
     }
 
     // ------------------------------------------------------------------ helpers

@@ -6,7 +6,7 @@ using UnityEngine.UI;
 /// <summary>
 /// Small bar at the bottom of the screen that appears when an object is selected.
 ///
-///   [ Selected: table ]  [ Move ]  [ Change Texture ]  [ Close ]
+///   [ Selected: table ]  [ Move ]  [ Resize ]  [ Change Texture ]  [ Close ]
 ///
 /// Clicking an object only selects it. The texture panel opens only from here,
 /// so a click in the room no longer pops up the Change Texture form every time.
@@ -17,12 +17,14 @@ using UnityEngine.UI;
 public class SelectionToolbar : MonoBehaviour
 {
     public event Action MoveClicked;
+    public event Action ResizeClicked;
     public event Action TextureClicked;
     public event Action CloseClicked;
 
     private GameObject panel;
     private TMP_Text label;
     private GameObject moveButton;
+    private GameObject resizeButton;
     private GameObject textureButton;
 
     private static readonly Color PanelColour = new Color(0.12f, 0.12f, 0.14f, 0.92f);
@@ -72,10 +74,11 @@ public class SelectionToolbar : MonoBehaviour
 
         label = CreateText(panel.transform, "Label", "", 18f, TextAlignmentOptions.Left);
         LayoutElement labelLayout = label.gameObject.AddComponent<LayoutElement>();
+        // No fixed width: the label grows with its text, so long hints are not cut off.
         labelLayout.minWidth = 180f;
-        labelLayout.preferredWidth = 320f;
 
         moveButton = CreateButton("Move", ButtonColour, () => MoveClicked?.Invoke());
+        resizeButton = CreateButton("Resize", ButtonColour, () => ResizeClicked?.Invoke());
         textureButton = CreateButton("Change Texture", ButtonColour, () => TextureClicked?.Invoke());
         CreateButton("Close", CloseColour, () => CloseClicked?.Invoke());
     }
@@ -87,6 +90,7 @@ public class SelectionToolbar : MonoBehaviour
         panel.transform.SetAsLastSibling();
         label.text = "Selected: " + objectName;
         moveButton.SetActive(true);
+        resizeButton.SetActive(true);
         textureButton.SetActive(true);
     }
 
@@ -97,6 +101,7 @@ public class SelectionToolbar : MonoBehaviour
         panel.transform.SetAsLastSibling();
         label.text = text;
         moveButton.SetActive(false);
+        resizeButton.SetActive(false);
         textureButton.SetActive(false);
     }
 

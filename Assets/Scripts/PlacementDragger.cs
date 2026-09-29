@@ -9,6 +9,7 @@ using UnityEngine.InputSystem;
 ///   Mouse          - move (the object follows the cursor)
 ///   Left click     - drop it here (only when the preview is green)
 ///   Q / E, scroll  - rotate in 15 degree steps
+///   + / -          - resize (grows from its base, so it stays standing on its surface)
 ///   Escape         - cancel
 ///
 /// Preview: green = the spot is free, red = it overlaps other furniture.
@@ -18,6 +19,8 @@ using UnityEngine.InputSystem;
 ///     until Accept / Undo, and clicking the item again picks it up again.
 ///   - an existing object (Move on the selection toolbar, or the G key).
 ///     The drop ends the session; Escape puts it back where it was.
+///   - Resize on the selection toolbar: scroll or + / - changes the size in place,
+///     click (or Enter) keeps it, Escape restores the old size.
 /// </summary>
 public class PlacementDragger : MonoBehaviour
 {
@@ -32,7 +35,18 @@ public class PlacementDragger : MonoBehaviour
 
     [SerializeField] private float rayDistance = 200f;
 
-    private enum Mode { NewItem, ExistingObject }
+    [Header("Resize")]
+    [Tooltip("Size change per scroll notch or + / - press. 1.1 = 10%.")]
+    [SerializeField] private float scaleStep = 1.1f;
+
+    [Tooltip("Smallest and largest size, compared with the size when the session started.")]
+    [SerializeField] private float minScale = 0.25f;
+    [SerializeField] private float maxScale = 3f;
+
+    private enum Mode { NewItem, ExistingObject, Resize }
+
+    /// <summary>Human-readable size ("Height 42 cm (120%)"), sent whenever the size changes.</summary>
+    public event Action<string> SizeChanged;
 
     /// <summary>A move session is open (the object is being placed).</summary>
     public bool IsActive { get; private set; }
@@ -55,6 +69,7 @@ public class PlacementDragger : MonoBehaviour
 
     private Vector3 startPosition;
     private Quaternion startRotation;
+    private Vector3 startScale;
     private Vector2 lastMouse;
     private ObjectInteraction.PlacementState shownState = ObjectInteraction.PlacementState.None;
 
@@ -98,6 +113,28 @@ public class PlacementDragger : MonoBehaviour
         return true;
     }
 
+    /// <summary>
+    /// Existing object: change its size in place. onEnd(true) after a click or Enter,
+    /// onEnd(false) after Escape (the old size is restored).
+    /// </summary>
+    public bool BeginResize(Transform target, string roomRootName, Action<bool> onEnd)
+    {
+        if (IsActive)
+        {
+            return false;
+        }
+
+        if (!Open(target, roomRootName, Mode.Resize, onEnd))
+        {
+            return false;
+        }
+
+        IsFollowing = false;
+        UpdatePreview();
+        ReportSize();
+        return true;
+    }
+
     /// <summary>Keep the object where it is and close the session (Accept).</summary>
     public void Finish()
     {
@@ -109,6 +146,7 @@ public class PlacementDragger : MonoBehaviour
     {
         if (Target != null)
         {
+            Target.localScale = startScale;
             Target.SetPositionAndRotation(startPosition, startRotation);
         }
 
@@ -143,6 +181,7 @@ public class PlacementDragger : MonoBehaviour
 
         startPosition = target.position;
         startRotation = target.rotation;
+        startScale = target.localScale;
 
         shownState = ObjectInteraction.PlacementState.None;
         interaction = target.GetComponent<ObjectInteraction>();
@@ -206,6 +245,12 @@ public class PlacementDragger : MonoBehaviour
         Keyboard keyboard = Keyboard.current;
         Mouse mouse = Mouse.current;
 
+        if (mode == Mode.Resize)
+        {
+            UpdateResize(keyboard, mouse);
+            return;
+        }
+
         if (keyboard != null && !UiInput.KeyboardBlocked)
         {
             if (keyboard.escapeKey.wasPressedThisFrame)
@@ -222,6 +267,8 @@ public class PlacementDragger : MonoBehaviour
 
             if (IsFollowing && keyboard.qKey.wasPressedThisFrame) Rotate(-1f);
             if (IsFollowing && keyboard.eKey.wasPressedThisFrame) Rotate(1f);
+            if (IsFollowing && GrowPressed(keyboard)) Resize(1f);
+            if (IsFollowing && ShrinkPressed(keyboard)) Resize(-1f);
         }
 
         if (mouse == null || viewCamera == null)
@@ -308,6 +355,102 @@ public class PlacementDragger : MonoBehaviour
         UpdatePreview();
     }
 
+    // ------------------------------------------------------------------ resize
+
+    private void UpdateResize(Keyboard keyboard, Mouse mouse)
+    {
+        if (keyboard != null && !UiInput.KeyboardBlocked)
+        {
+            if (keyboard.escapeKey.wasPressedThisFrame)
+            {
+                Cancel();
+                return;
+            }
+
+            if (GrowPressed(keyboard)) Resize(1f);
+            if (ShrinkPressed(keyboard)) Resize(-1f);
+
+            if (keyboard.enterKey.wasPressedThisFrame && !Blocked)
+            {
+                End(true);
+                return;
+            }
+        }
+
+        if (mouse == null || UiInput.PointerOverUI)
+        {
+            return;
+        }
+
+        float scroll = mouse.scroll.ReadValue().y;
+        if (Mathf.Abs(scroll) > 0.01f)
+        {
+            Resize(Mathf.Sign(scroll));
+        }
+
+        if (mouse.leftButton.wasPressedThisFrame && !Blocked)
+        {
+            End(true);
+        }
+    }
+
+    private static bool GrowPressed(Keyboard keyboard)
+    {
+        return keyboard.equalsKey.wasPressedThisFrame || keyboard.numpadPlusKey.wasPressedThisFrame;
+    }
+
+    private static bool ShrinkPressed(Keyboard keyboard)
+    {
+        return keyboard.minusKey.wasPressedThisFrame || keyboard.numpadMinusKey.wasPressedThisFrame;
+    }
+
+    /// <summary>One step bigger (+1) or smaller (-1), keeping the base on its surface.</summary>
+    private void Resize(float direction)
+    {
+        float ratio = CurrentRatio();
+        float wanted = Mathf.Clamp(
+            direction > 0f ? ratio * scaleStep : ratio / scaleStep, minScale, maxScale);
+
+        if (Mathf.Approximately(wanted, ratio) || !TryBounds(Target, out Bounds before))
+        {
+            return;
+        }
+
+        Vector3 basePoint = new Vector3(before.center.x, before.min.y, before.center.z);
+
+        Target.localScale = startScale * wanted;
+
+        // Scaling happens around the pivot; move it back so the base stays where it was.
+        if (TryBounds(Target, out Bounds after))
+        {
+            Vector3 newBase = new Vector3(after.center.x, after.min.y, after.center.z);
+            Target.position += basePoint - newBase;
+        }
+
+        Target.position = Contain(Target.position);
+        UpdatePreview();
+        ReportSize();
+    }
+
+    private float CurrentRatio()
+    {
+        return Mathf.Abs(startScale.x) > 1e-6f ? Target.localScale.x / startScale.x : 1f;
+    }
+
+    private void ReportSize()
+    {
+        if (SizeChanged == null || Target == null || !TryBounds(Target, out Bounds bounds))
+        {
+            return;
+        }
+
+        float ceiling = roomKnown ? room.size.y : 2.6f;
+        float metres = bounds.size.y / TypicalSizes.UnitsPerMetre(ceiling);
+
+        SizeChanged.Invoke("Height " + Mathf.RoundToInt(metres * 100f) + " cm (" +
+                           Mathf.RoundToInt(CurrentRatio() * 100f) + "%)");
+    }
+
     // ------------------------------------------------------------------ surfaces
 
     /// <summary>
@@ -384,10 +527,11 @@ public class PlacementDragger : MonoBehaviour
 
     private void UpdatePreview()
     {
-        Blocked = IsFollowing && !IsPlacementFree();
+        bool previewing = IsFollowing || mode == Mode.Resize;
+        Blocked = previewing && !IsPlacementFree();
 
         ObjectInteraction.PlacementState state =
-            !IsFollowing ? ObjectInteraction.PlacementState.None :
+            !previewing ? ObjectInteraction.PlacementState.None :
             Blocked ? ObjectInteraction.PlacementState.Blocked :
             ObjectInteraction.PlacementState.Valid;
 
