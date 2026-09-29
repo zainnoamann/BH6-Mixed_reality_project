@@ -30,16 +30,72 @@ public class PlayerMovement : MonoBehaviour
     [SerializeField] private float verticalSpeed = 2.0f;
 
     private CharacterController controller;
+    private AudioListener[] audioListeners;
     private float verticalVelocity;
 
     private void Awake()
     {
         controller = GetComponent<CharacterController>();
+        audioListeners = FindObjectsByType<AudioListener>(
+            FindObjectsInactive.Include, FindObjectsSortMode.None);
 
         if (cameraTransform == null && Camera.main != null)
         {
             cameraTransform = Camera.main.transform;
         }
+    }
+
+    private void LateUpdate()
+    {
+        if (audioListeners == null || audioListeners.Length < 2)
+            return;
+
+        bool usingXr = XRSettings.isDeviceActive;
+        AudioListener selected = null;
+
+        foreach (AudioListener listener in audioListeners)
+        {
+            if (listener != null && listener.gameObject.activeInHierarchy &&
+                IsXrListener(listener) == usingXr)
+            {
+                selected = listener;
+                break;
+            }
+        }
+
+        if (selected == null)
+        {
+            foreach (AudioListener listener in audioListeners)
+            {
+                if (listener != null && listener.gameObject.activeInHierarchy)
+                {
+                    selected = listener;
+                    break;
+                }
+            }
+        }
+
+        if (selected == null)
+            return;
+
+        foreach (AudioListener listener in audioListeners)
+        {
+            if (listener != null && listener.enabled != (listener == selected))
+            {
+                listener.enabled = listener == selected;
+            }
+        }
+    }
+
+    private static bool IsXrListener(AudioListener listener)
+    {
+        for (Transform current = listener.transform; current != null; current = current.parent)
+        {
+            if (current.name.StartsWith("XR Origin", System.StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
     }
 
     private void Update()
