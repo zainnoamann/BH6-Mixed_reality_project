@@ -16,6 +16,11 @@ using UnityEngine.UI;
 ///                    ->  drag it on the floor
 ///                    ->  Accept keeps it, Undo removes it, Regenerate tries again
 ///
+///   Click object     ->  describe look ->  POST /generate    (same image job)
+///                    ->  image preview  ->  Apply to object
+///                    ->  URP material on the existing mesh (no new GLB)
+///                    ->  Accept keeps it, Undo restores the previous materials
+///
 /// When the server is unreachable or has no GPU the same panels run in PLACEHOLDER mode:
 /// simulated waits and a coloured block instead of a mesh, so the whole flow is testable
 /// without a GPU. Failures never dead-end - the popup always closes and the status says why.
@@ -72,6 +77,10 @@ public class AddItemFlow : MonoBehaviour
 
     private GameObject placed;
     private PlacementDragger dragger;
+
+    private bool isTextureChange;
+    private ObjectInteraction textureTarget;
+    private TMP_Text generate3dButtonText;
 
     private bool aiReady;
     private string aiStatus = "checking";
@@ -148,6 +157,7 @@ public class AddItemFlow : MonoBehaviour
         imageStatusText = imageStatusText != null ? imageStatusText : FindText("ImageStatusText");
         resultStatusText = resultStatusText != null ? resultStatusText : FindText("ResultStatus");
         statusText = statusText != null ? statusText : FindText("StatusText");
+        generate3dButtonText = generate3dButtonText != null ? generate3dButtonText : FindText("Generate3DButtonText");
     }
 
     private static GameObject Find(string name)
@@ -224,6 +234,33 @@ public class AddItemFlow : MonoBehaviour
             return;
         }
 
+        isTextureChange = false;
+        textureTarget = null;
+        BeginImage(description);
+    }
+
+    /// <summary>Generate button after selecting an object already in the room.</summary>
+    public void BeginTextureChange(string description, ObjectInteraction target)
+    {
+        if (target == null)
+        {
+            Say(statusText, "Status: click an object in the room first");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(description))
+        {
+            Say(statusText, "Status: describe the new look first");
+            return;
+        }
+
+        isTextureChange = true;
+        textureTarget = target;
+        BeginImage(description);
+    }
+
+    private void BeginImage(string description)
+    {
         prompt = description.Trim();
         previewColour = ColourFor(prompt);
         previewImage = null;
@@ -247,10 +284,17 @@ public class AddItemFlow : MonoBehaviour
         Restart(ImageJob());
     }
 
-    /// <summary>Generate 3D, on the image preview panel.</summary>
+    /// <summary>Generate 3D, or apply the preview to the selected object.</summary>
     public void GenerateModel()
     {
         Show(imagePreviewPanel, false);
+
+        if (isTextureChange)
+        {
+            Restart(ApplyTextureJob());
+            return;
+        }
+
         Restart(ModelJob());
     }
 
@@ -275,6 +319,21 @@ public class AddItemFlow : MonoBehaviour
     /// <summary>Accept, on the review panel: keep the object where it was dragged.</summary>
     public void AcceptResult()
     {
+        if (isTextureChange)
+        {
+            if (textureTarget != null)
+            {
+                textureTarget.CommitTexture();
+            }
+
+            isTextureChange = false;
+            textureTarget = null;
+            stage = Stage.Idle;
+            Show(reviewPanel, false);
+            Say(statusText, "Status: texture applied");
+            return;
+        }
+
         dragger.Finish();
         placed = null;
         stage = Stage.Idle;
@@ -286,6 +345,21 @@ public class AddItemFlow : MonoBehaviour
     /// <summary>Undo, on the review panel: remove the object that was just added.</summary>
     public void UndoResult()
     {
+        if (isTextureChange)
+        {
+            if (textureTarget != null)
+            {
+                textureTarget.RestoreUndo();
+            }
+
+            isTextureChange = false;
+            textureTarget = null;
+            stage = Stage.Idle;
+            Show(reviewPanel, false);
+            Say(statusText, "Status: texture reverted");
+            return;
+        }
+
         DiscardPlaced();
         Show(reviewPanel, false);
         stage = Stage.Idle;
@@ -295,6 +369,18 @@ public class AddItemFlow : MonoBehaviour
     /// <summary>Regenerate, on the review panel: throw this one away and build another.</summary>
     public void RegenerateResult()
     {
+        if (isTextureChange)
+        {
+            if (textureTarget != null)
+            {
+                textureTarget.RestoreUndo();
+            }
+
+            Show(reviewPanel, false);
+            Restart(ImageJob());
+            return;
+        }
+
         DiscardPlaced();
         Show(reviewPanel, false);
         Restart(ModelJob());
@@ -325,7 +411,8 @@ public class AddItemFlow : MonoBehaviour
 
         if (string.IsNullOrEmpty(jobId))
         {
-            yield return client.StartImageJob(prompt, j => job = j, e => error = e);
+            yield return client.StartImageJob(
+                prompt, j => job = j, e => error = e, isTextureChange ? "texture" : "add");
         }
         else
         {
@@ -393,7 +480,19 @@ public class AddItemFlow : MonoBehaviour
             }
         }
 
-        Say(imageStatusText, aiReady ? "\"" + prompt + "\"" : "\"" + prompt + "\"  (preview - no AI server)");
+        string quote = "\"" + prompt + "\"";
+        if (!aiReady)
+        {
+            quote += "  (preview - no AI server)";
+        }
+
+        if (isTextureChange && textureTarget != null)
+        {
+            quote += "  → apply to " + textureTarget.gameObject.name;
+        }
+
+        Say(imageStatusText, quote);
+        Say(generate3dButtonText, isTextureChange ? "Apply to object" : "Generate 3D");
         Show(imagePreviewPanel, true);
     }
 
@@ -441,9 +540,34 @@ public class AddItemFlow : MonoBehaviour
 
         GameObject model = null;
         yield return GeneratedModelLoader.Load(
-            glb, previewImage, previewColour, "Generated: " + prompt, TargetHeight(), g => model = g);
+            glb, previewImage, previewColour, "Generated: " + prompt, TargetHeight(),
+            g => model = g, keepImportedMaterials: done.textured);
 
         EnterPlacement(model);
+    }
+
+    private IEnumerator ApplyTextureJob()
+    {
+        if (textureTarget == null)
+        {
+            Fail("no object selected");
+            yield break;
+        }
+
+        ShowLoading("Applying texture");
+        yield return null;
+
+        textureTarget.RememberForUndo();
+        textureTarget.ClearHighlights();
+        GeneratedModelLoader.ApplyLook(textureTarget.gameObject, previewImage, previewColour);
+        textureTarget.AdoptCurrentMaterials();
+
+        flow = null;
+        Show(loadingPopup, false);
+        Say(resultStatusText, "Texture applied to " + textureTarget.gameObject.name +
+                              ". Accept to keep, Undo to revert.");
+        Show(reviewPanel, true);
+        stage = Stage.Placing;
     }
 
     // ------------------------------------------------------------------ placement

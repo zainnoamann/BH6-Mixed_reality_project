@@ -56,27 +56,58 @@ public class PlacementDragger : MonoBehaviour
         Finish();
     }
 
-    /// <summary>On the floor, a little in front of the camera, clamped inside the room.</summary>
+    /// <summary>
+    /// On the floor where the camera is looking, clamped inside the room.
+    ///
+    /// The old rule ("1.3 m in front of the camera") put the object outside the room when
+    /// the camera stands outside or above it: the point was then clamped to a room corner,
+    /// inside the wall, where the Game view cannot see it. Now: aim at the floor through the
+    /// centre of the screen, and if that misses the room, use the middle of the room.
+    /// </summary>
     private Vector3 SpawnPoint()
     {
         float lift = Height(Target) * 0.5f;
 
         if (viewCamera == null)
         {
-            return new Vector3(0f, floorY + lift, 0f);
+            Vector3 fallback = roomKnown ? room.center : Vector3.zero;
+            fallback.y = floorY + lift;
+            return Contain(fallback);
         }
 
-        Vector3 forward = Vector3.ProjectOnPlane(viewCamera.transform.forward, Vector3.up).normalized;
+        Vector3 point;
+        Ray ray = viewCamera.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
+        Plane floor = new Plane(Vector3.up, new Vector3(0f, floorY, 0f));
 
-        if (forward.sqrMagnitude < 0.001f)
+        if (floor.Raycast(ray, out float distance) && distance < 500f)
         {
-            forward = Vector3.forward;
+            point = ray.GetPoint(distance);
+        }
+        else
+        {
+            Vector3 forward = Vector3.ProjectOnPlane(viewCamera.transform.forward, Vector3.up).normalized;
+            if (forward.sqrMagnitude < 0.001f)
+            {
+                forward = Vector3.forward;
+            }
+            point = viewCamera.transform.position + forward * 1.3f;
         }
 
-        Vector3 point = viewCamera.transform.position + forward * 1.3f;
+        if (roomKnown && !InsideRoomXZ(point, 0.3f))
+        {
+            point = room.center;
+        }
+
         point.y = floorY + lift;
 
         return Contain(point);
+    }
+
+    /// <summary>True when the point is inside the room footprint, at least margin from the walls.</summary>
+    private bool InsideRoomXZ(Vector3 point, float margin)
+    {
+        return point.x > room.min.x + margin && point.x < room.max.x - margin &&
+               point.z > room.min.z + margin && point.z < room.max.z - margin;
     }
 
     private void Update()

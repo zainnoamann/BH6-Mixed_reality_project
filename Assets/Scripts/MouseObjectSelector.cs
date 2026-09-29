@@ -11,6 +11,8 @@ public class MouseObjectSelector : MonoBehaviour
     private ObjectInteraction hoveredObject;
     private ObjectInteraction selectedObject;
 
+    public ObjectInteraction Selected => selectedObject;
+
     [SerializeField] private SelectionUIController uiController;
 
     private void Start()
