@@ -8,6 +8,16 @@ public class ObjectInteraction : MonoBehaviour
 
     private bool isHovered;
     private bool isSelected;
+    private PlacementState placement = PlacementState.None;
+
+    public enum PlacementState { None, Valid, Blocked }
+
+    // Light tints multiply the object's own colours, so the texture stays visible.
+    // The old full yellow / cyan made every clicked object look painted blue.
+    private static readonly Color HoverTint = new Color(1f, 0.95f, 0.75f);
+    private static readonly Color SelectedTint = new Color(0.7f, 0.88f, 1f);
+    private static readonly Color ValidTint = new Color(0.65f, 1f, 0.65f);
+    private static readonly Color BlockedTint = new Color(1f, 0.5f, 0.5f);
 
     private void Awake()
     {
@@ -27,16 +37,31 @@ public class ObjectInteraction : MonoBehaviour
         UpdateAppearance();
     }
 
+    /// <summary>Green / red preview while the object is being moved. None = normal look.</summary>
+    public void SetPlacementState(PlacementState state)
+    {
+        placement = state;
+        UpdateAppearance();
+    }
+
     private void UpdateAppearance()
     {
-        // Selected always has priority
-        if (isSelected)
+        // Placement feedback first, then selection, then hover.
+        if (placement == PlacementState.Blocked)
         {
-            SetSelectedHighlight();
+            Tint(BlockedTint);
+        }
+        else if (placement == PlacementState.Valid)
+        {
+            Tint(ValidTint);
+        }
+        else if (isSelected)
+        {
+            Tint(SelectedTint);
         }
         else if (isHovered)
         {
-            SetHoverHighlight();
+            Tint(HoverTint);
         }
         else
         {
@@ -44,28 +69,39 @@ public class ObjectInteraction : MonoBehaviour
         }
     }
 
-    private void SetHoverHighlight()
+    private void Tint(Color tint)
     {
+        // Start from the real materials each time so tints never stack.
+        RestoreMaterials();
+
         foreach (Renderer renderer in renderers)
         {
-            Material[] materials = renderer.materials;
-
-            for (int i = 0; i < materials.Length; i++)
+            if (renderer == null)
             {
-                materials[i].color = Color.yellow;
+                continue;
             }
-        }
-    }
 
-    private void SetSelectedHighlight()
-    {
-        foreach (Renderer renderer in renderers)
-        {
             Material[] materials = renderer.materials;
 
             for (int i = 0; i < materials.Length; i++)
             {
-                materials[i].color = Color.cyan;
+                Material material = materials[i];
+
+                if (material == null)
+                {
+                    continue;
+                }
+
+                // URP Lit uses _BaseColor, glTFast (generated GLBs) uses baseColorFactor.
+                string property =
+                    material.HasProperty("_BaseColor") ? "_BaseColor" :
+                    material.HasProperty("baseColorFactor") ? "baseColorFactor" :
+                    material.HasProperty("_Color") ? "_Color" : null;
+
+                if (property != null)
+                {
+                    material.SetColor(property, material.GetColor(property) * tint);
+                }
             }
         }
     }
@@ -80,6 +116,7 @@ public class ObjectInteraction : MonoBehaviour
     {
         isHovered = false;
         isSelected = false;
+        placement = PlacementState.None;
         RestoreMaterials();
     }
 

@@ -334,6 +334,12 @@ public class AddItemFlow : MonoBehaviour
             return;
         }
 
+        if (dragger.Blocked)
+        {
+            Say(resultStatusText, "It overlaps other furniture (red). Move it to a free spot first.");
+            return;
+        }
+
         dragger.Finish();
         placed = null;
         stage = Stage.Idle;
@@ -592,7 +598,7 @@ public class AddItemFlow : MonoBehaviour
         dragger.Begin(placed.transform, roomRootName);
         stage = Stage.Placing;
 
-        Say(resultStatusText, "Drag it into place, then Accept.");
+        Say(resultStatusText, "Move the mouse to place it, click to drop. Q / E or scroll rotates. Then Accept.");
         Show(reviewPanel, true);
     }
 

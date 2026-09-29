@@ -121,6 +121,18 @@ public class SelectionUIController : MonoBehaviour
         Debug.Log("Selection panel closed.");
     }
 
+    /// <summary>
+    /// Closes the panel only when it is showing Change Texture for an object,
+    /// so deselecting never closes a New Item form the user is typing in.
+    /// </summary>
+    public void HideObjectPanel()
+    {
+        if (!isNewItem && selectionPanel != null && selectionPanel.activeSelf)
+        {
+            selectionPanel.SetActive(false);
+        }
+    }
+
     public void ShowNewItem()
     {
         isNewItem = true;
