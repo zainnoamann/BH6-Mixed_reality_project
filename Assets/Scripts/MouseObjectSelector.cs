@@ -8,8 +8,8 @@ using UnityEngine.InputSystem;
 ///   Click empty space    - deselect
 ///   Escape               - deselect
 ///
-/// Toolbar: Move (follows the mouse, sits on surfaces), Resize (scroll or + / -),
-/// Change Texture, Close.
+/// Toolbar: Move (follows the mouse, sits on surfaces), Rotate (scroll or Q / E),
+/// Resize (scroll or + / -), Change Texture, Close.
 ///
 /// Selecting does nothing else. Move and Change Texture are buttons on the toolbar,
 /// so the texture form no longer pops up on every click.
@@ -36,6 +36,7 @@ public class MouseObjectSelector : MonoBehaviour
     private SelectionToolbar toolbar;
     private PlacementDragger placer;
     private string resizeHint;
+    private string rotateHint;
 
     private void Start()
     {
@@ -58,6 +59,7 @@ public class MouseObjectSelector : MonoBehaviour
         }
 
         placer.SizeChanged += ShowSize;
+        placer.AngleChanged += ShowAngle;
 
         Transform canvas = FindScreenCanvas();
         if (canvas != null)
@@ -65,6 +67,7 @@ public class MouseObjectSelector : MonoBehaviour
             toolbar = SelectionToolbar.Create(canvas);
             toolbar.MoveClicked += MoveSelected;
             toolbar.ResizeClicked += ResizeSelected;
+            toolbar.RotateClicked += RotateSelected;
             toolbar.TextureClicked += OpenTexturePanel;
             toolbar.CloseClicked += Deselect;
         }
@@ -110,6 +113,37 @@ public class MouseObjectSelector : MonoBehaviour
     public void MoveSelected()
     {
         StartMove(selectedObject);
+    }
+
+    /// <summary>Starts rotating the selected object in place (toolbar Rotate button).</summary>
+    public void RotateSelected()
+    {
+        ObjectInteraction target = selectedObject;
+
+        if (target == null || placer == null || placer.IsActive)
+            return;
+
+        if (uiController != null)
+        {
+            uiController.HideObjectPanel();
+        }
+
+        rotateHint = "Rotating " + target.gameObject.name;
+
+        bool started = placer.BeginRotate(target.transform, roomRootName, committed =>
+        {
+            rotateHint = null;
+
+            if (target != null)
+            {
+                Select(target);
+            }
+        });
+
+        if (!started)
+        {
+            rotateHint = null;
+        }
     }
 
     /// <summary>Starts resizing the selected object (toolbar Resize button).</summary>
@@ -312,6 +346,16 @@ public class MouseObjectSelector : MonoBehaviour
 
         toolbar.ShowHint(resizeHint + ": " + size +
                          "  |  scroll or + / -  |  click to keep  |  Esc to cancel");
+    }
+
+    /// <summary>Live angle while rotating, e.g. "Turned +30 degrees".</summary>
+    private void ShowAngle(string angle)
+    {
+        if (rotateHint == null || toolbar == null)
+            return;
+
+        toolbar.ShowHint(rotateHint + ": " + angle +
+                         "  |  scroll or Q / E (Shift = fine)  |  click to keep  |  Esc to cancel");
     }
 
     // ------------------------------------------------------------------ helpers

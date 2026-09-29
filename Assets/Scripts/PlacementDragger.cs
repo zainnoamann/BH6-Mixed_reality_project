@@ -21,6 +21,9 @@ using UnityEngine.InputSystem;
 ///     The drop ends the session; Escape puts it back where it was.
 ///   - Resize on the selection toolbar: scroll or + / - changes the size in place,
 ///     click (or Enter) keeps it, Escape restores the old size.
+///   - Rotate on the selection toolbar: scroll or Q / E turns it in place
+///     (hold Shift for fine 5 degree steps), click (or Enter) keeps it,
+///     Escape restores the old angle.
 /// </summary>
 public class PlacementDragger : MonoBehaviour
 {
@@ -43,7 +46,15 @@ public class PlacementDragger : MonoBehaviour
     [SerializeField] private float minScale = 0.25f;
     [SerializeField] private float maxScale = 3f;
 
-    private enum Mode { NewItem, ExistingObject, Resize }
+    [Tooltip("Degrees per step while Shift is held, for fine rotation.")]
+    [SerializeField] private float fineRotationStep = 5f;
+
+    private enum Mode { NewItem, ExistingObject, Resize, Rotate }
+
+    /// <summary>Human-readable angle ("Turned +30 degrees"), sent whenever the rotation changes.</summary>
+    public event Action<string> AngleChanged;
+
+    private float turnedDegrees;
 
     /// <summary>Human-readable size ("Height 42 cm (120%)"), sent whenever the size changes.</summary>
     public event Action<string> SizeChanged;
@@ -135,6 +146,28 @@ public class PlacementDragger : MonoBehaviour
         return true;
     }
 
+    /// <summary>
+    /// Existing object: turn it in place. onEnd(true) after a click or Enter,
+    /// onEnd(false) after Escape (the old angle is restored).
+    /// </summary>
+    public bool BeginRotate(Transform target, string roomRootName, Action<bool> onEnd)
+    {
+        if (IsActive)
+        {
+            return false;
+        }
+
+        if (!Open(target, roomRootName, Mode.Rotate, onEnd))
+        {
+            return false;
+        }
+
+        IsFollowing = false;
+        UpdatePreview();
+        ReportAngle();
+        return true;
+    }
+
     /// <summary>Keep the object where it is and close the session (Accept).</summary>
     public void Finish()
     {
@@ -182,6 +215,7 @@ public class PlacementDragger : MonoBehaviour
         startPosition = target.position;
         startRotation = target.rotation;
         startScale = target.localScale;
+        turnedDegrees = 0f;
 
         shownState = ObjectInteraction.PlacementState.None;
         interaction = target.GetComponent<ObjectInteraction>();
@@ -248,6 +282,12 @@ public class PlacementDragger : MonoBehaviour
         if (mode == Mode.Resize)
         {
             UpdateResize(keyboard, mouse);
+            return;
+        }
+
+        if (mode == Mode.Rotate)
+        {
+            UpdateRotate(keyboard, mouse);
             return;
         }
 
@@ -348,11 +388,76 @@ public class PlacementDragger : MonoBehaviour
 
     private void Rotate(float direction)
     {
-        Target.Rotate(Vector3.up, direction * rotationStep, Space.World);
+        Keyboard keyboard = Keyboard.current;
+        bool fine = keyboard != null && keyboard.shiftKey.isPressed;
+        float degrees = direction * (fine ? fineRotationStep : rotationStep);
+
+        // Turn around the middle of the object, not its pivot: imported models often
+        // have the pivot in a corner, and turning around that swings the whole object away.
+        if (TryBounds(Target, out Bounds bounds))
+        {
+            Vector3 centre = new Vector3(bounds.center.x, Target.position.y, bounds.center.z);
+            Target.RotateAround(centre, Vector3.up, degrees);
+        }
+        else
+        {
+            Target.Rotate(Vector3.up, degrees, Space.World);
+        }
+
+        turnedDegrees = Mathf.Repeat(turnedDegrees + degrees + 180f, 360f) - 180f;
 
         // Rotation changes the footprint: keep it inside the room and re-check overlaps.
         Target.position = Contain(Target.position);
         UpdatePreview();
+        ReportAngle();
+    }
+
+    private void UpdateRotate(Keyboard keyboard, Mouse mouse)
+    {
+        if (keyboard != null && !UiInput.KeyboardBlocked)
+        {
+            if (keyboard.escapeKey.wasPressedThisFrame)
+            {
+                Cancel();
+                return;
+            }
+
+            if (keyboard.qKey.wasPressedThisFrame) Rotate(-1f);
+            if (keyboard.eKey.wasPressedThisFrame) Rotate(1f);
+
+            if (keyboard.enterKey.wasPressedThisFrame && !Blocked)
+            {
+                End(true);
+                return;
+            }
+        }
+
+        if (mouse == null || UiInput.PointerOverUI)
+        {
+            return;
+        }
+
+        float scroll = mouse.scroll.ReadValue().y;
+        if (Mathf.Abs(scroll) > 0.01f)
+        {
+            Rotate(Mathf.Sign(scroll));
+        }
+
+        if (mouse.leftButton.wasPressedThisFrame && !Blocked)
+        {
+            End(true);
+        }
+    }
+
+    private void ReportAngle()
+    {
+        if (AngleChanged == null)
+        {
+            return;
+        }
+
+        int turned = Mathf.RoundToInt(turnedDegrees);
+        AngleChanged.Invoke("Turned " + (turned > 0 ? "+" : "") + turned + " degrees");
     }
 
     // ------------------------------------------------------------------ resize
@@ -527,7 +632,7 @@ public class PlacementDragger : MonoBehaviour
 
     private void UpdatePreview()
     {
-        bool previewing = IsFollowing || mode == Mode.Resize;
+        bool previewing = IsFollowing || mode == Mode.Resize || mode == Mode.Rotate;
         Blocked = previewing && !IsPlacementFree();
 
         ObjectInteraction.PlacementState state =

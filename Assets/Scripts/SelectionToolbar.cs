@@ -6,7 +6,7 @@ using UnityEngine.UI;
 /// <summary>
 /// Small bar at the bottom of the screen that appears when an object is selected.
 ///
-///   [ Selected: table ]  [ Move ]  [ Resize ]  [ Change Texture ]  [ Close ]
+///   [ Selected: table ]  [ Move ]  [ Rotate ]  [ Resize ]  [ Change Texture ]  [ Close ]
 ///
 /// Clicking an object only selects it. The texture panel opens only from here,
 /// so a click in the room no longer pops up the Change Texture form every time.
@@ -18,6 +18,7 @@ public class SelectionToolbar : MonoBehaviour
 {
     public event Action MoveClicked;
     public event Action ResizeClicked;
+    public event Action RotateClicked;
     public event Action TextureClicked;
     public event Action CloseClicked;
 
@@ -25,6 +26,7 @@ public class SelectionToolbar : MonoBehaviour
     private TMP_Text label;
     private GameObject moveButton;
     private GameObject resizeButton;
+    private GameObject rotateButton;
     private GameObject textureButton;
 
     private static readonly Color PanelColour = new Color(0.12f, 0.12f, 0.14f, 0.92f);
@@ -78,6 +80,7 @@ public class SelectionToolbar : MonoBehaviour
         labelLayout.minWidth = 180f;
 
         moveButton = CreateButton("Move", ButtonColour, () => MoveClicked?.Invoke());
+        rotateButton = CreateButton("Rotate", ButtonColour, () => RotateClicked?.Invoke());
         resizeButton = CreateButton("Resize", ButtonColour, () => ResizeClicked?.Invoke());
         textureButton = CreateButton("Change Texture", ButtonColour, () => TextureClicked?.Invoke());
         CreateButton("Close", CloseColour, () => CloseClicked?.Invoke());
@@ -90,6 +93,7 @@ public class SelectionToolbar : MonoBehaviour
         panel.transform.SetAsLastSibling();
         label.text = "Selected: " + objectName;
         moveButton.SetActive(true);
+        rotateButton.SetActive(true);
         resizeButton.SetActive(true);
         textureButton.SetActive(true);
     }
@@ -101,6 +105,7 @@ public class SelectionToolbar : MonoBehaviour
         panel.transform.SetAsLastSibling();
         label.text = text;
         moveButton.SetActive(false);
+        rotateButton.SetActive(false);
         resizeButton.SetActive(false);
         textureButton.SetActive(false);
     }
