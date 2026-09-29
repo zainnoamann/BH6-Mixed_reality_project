@@ -37,6 +37,18 @@ public class PointerSource : MonoBehaviour
     {
         Instance = this;
 
+        if (rightHand == null)
+        {
+            foreach (Transform candidate in FindObjectsByType<Transform>(FindObjectsSortMode.None))
+            {
+                if (candidate.name == "Right Controller")
+                {
+                    rightHand = candidate;
+                    break;
+                }
+            }
+        }
+
         if (viewCamera == null)
         {
             viewCamera = Camera.main;
@@ -61,7 +73,7 @@ public class PointerSource : MonoBehaviour
             if (forceXr)
                 return true;
 
-            InputDevice head = InputDevices.GetDeviceAtXRNode(XRNode.Head);
+            UnityEngine.XR.InputDevice head = InputDevices.GetDeviceAtXRNode(XRNode.Head);
 
             return head.isValid && rightHand != null;
         }
@@ -196,12 +208,13 @@ public class PointerSource : MonoBehaviour
         {
             if (UsingXr)
             {
-                InputDevice hand =
+                UnityEngine.XR.InputDevice hand =
                     InputDevices.GetDeviceAtXRNode(XRNode.RightHand);
+                bool b = false;
 
                 return hand.isValid &&
                        hand.TryGetFeatureValue(
-                           CommonUsages.secondaryButton, out bool b) && b;
+                           UnityEngine.XR.CommonUsages.secondaryButton, out b) && b;
             }
 
             return Keyboard.current != null &&
@@ -221,7 +234,7 @@ public class PointerSource : MonoBehaviour
         triggerLast = triggerNow;
         gripLast = gripNow;
 
-        InputDevice hand = InputDevices.GetDeviceAtXRNode(XRNode.RightHand);
+        UnityEngine.XR.InputDevice hand = InputDevices.GetDeviceAtXRNode(XRNode.RightHand);
 
         if (!hand.isValid)
         {
@@ -230,7 +243,7 @@ public class PointerSource : MonoBehaviour
             return;
         }
 
-        hand.TryGetFeatureValue(CommonUsages.triggerButton, out triggerNow);
-        hand.TryGetFeatureValue(CommonUsages.gripButton, out gripNow);
+        hand.TryGetFeatureValue(UnityEngine.XR.CommonUsages.triggerButton, out triggerNow);
+        hand.TryGetFeatureValue(UnityEngine.XR.CommonUsages.gripButton, out gripNow);
     }
 }

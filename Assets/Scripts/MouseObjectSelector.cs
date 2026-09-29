@@ -43,8 +43,8 @@ public class MouseObjectSelector : MonoBehaviour
 
         if (pointer == null)
         {
-            Debug.LogError(
-                "PointerSource was not found. Add it to this object.");
+            pointer = gameObject.AddComponent<PointerSource>();
+            Debug.Log("PointerSource was missing and has been added to this object.", this);
         }
     }
 

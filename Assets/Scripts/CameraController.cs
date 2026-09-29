@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.XR;
 
 /// <summary>
 /// Right-drag to look around: yaw turns the body, pitch tilts the camera.
@@ -27,19 +28,27 @@ public class CameraController : MonoBehaviour
     [Tooltip("Hide and lock the cursor while looking, so a drag never runs out of screen.")]
     [SerializeField] private bool lockCursorWhileLooking = true;
 
+    [Header("XR Turn")]
+    [SerializeField, Range(15f, 90f)] private float snapTurnAngle = 45f;
+    [SerializeField, Range(0.1f, 1f)] private float snapTurnThreshold = 0.7f;
+
     [Tooltip("Body that yaws. Left empty, the parent is used, or this transform if it has none.")]
     [SerializeField] private Transform body;
 
     private float yaw;
     private float pitch;
     private bool looking;
+    private bool snapTurnReady = true;
     private Vector2 cursorBeforeLook;
 
     private void Awake()
     {
         if (body == null)
         {
-            body = transform.parent != null ? transform.parent : transform;
+            CharacterController playerController = GetComponentInParent<CharacterController>();
+            body = playerController != null
+                ? playerController.transform
+                : transform.parent != null ? transform.parent : transform;
         }
 
         yaw = body.eulerAngles.y;
@@ -50,6 +59,13 @@ public class CameraController : MonoBehaviour
 
     private void Update()
     {
+        UnityEngine.XR.InputDevice head = InputDevices.GetDeviceAtXRNode(XRNode.Head);
+        if (XRSettings.isDeviceActive && head.isValid)
+        {
+            UpdateXrTurn();
+            return;
+        }
+
         Mouse mouse = Mouse.current;
 
         if (mouse == null)
@@ -88,6 +104,30 @@ public class CameraController : MonoBehaviour
         pitch = Mathf.Clamp(pitch, minPitch, maxPitch);
 
         Apply();
+    }
+
+    private void UpdateXrTurn()
+    {
+        UnityEngine.XR.InputDevice rightHand =
+            InputDevices.GetDeviceAtXRNode(XRNode.RightHand);
+        if (!rightHand.isValid ||
+            !rightHand.TryGetFeatureValue(
+                UnityEngine.XR.CommonUsages.primary2DAxis, out Vector2 axis))
+        {
+            snapTurnReady = true;
+            return;
+        }
+
+        if (Mathf.Abs(axis.x) < snapTurnThreshold * 0.4f)
+        {
+            snapTurnReady = true;
+        }
+
+        if (!snapTurnReady || Mathf.Abs(axis.x) < snapTurnThreshold)
+            return;
+
+        body.Rotate(Vector3.up, Mathf.Sign(axis.x) * snapTurnAngle, Space.World);
+        snapTurnReady = false;
     }
 
     private void Apply()
