@@ -37,22 +37,12 @@ public class PointerSource : MonoBehaviour
     {
         Instance = this;
 
-        if (rightHand == null)
-        {
-            foreach (Transform candidate in FindObjectsByType<Transform>(FindObjectsSortMode.None))
-            {
-                if (candidate.name == "Right Controller")
-                {
-                    rightHand = candidate;
-                    break;
-                }
-            }
-        }
-
         if (viewCamera == null)
         {
             viewCamera = Camera.main;
         }
+
+        Configure(viewCamera);
     }
 
     public static PointerSource Resolve()
@@ -95,6 +85,53 @@ public class PointerSource : MonoBehaviour
     /// <summary>The controller transform, so callers can read its rotation.</summary>
     public Transform Hand => rightHand;
 
+    public void Configure(Camera camera)
+    {
+        if (camera != null)
+        {
+            viewCamera = camera;
+        }
+
+        Transform rigRoot = viewCamera != null
+            ? viewCamera.transform.root
+            : null;
+
+        rightHand = FindRightController(rigRoot);
+
+        if (rightHand == null)
+        {
+            Debug.LogWarning(
+                "PointerSource could not find a Right Controller in the active XR rig.",
+                this);
+        }
+    }
+
+    private static Transform FindRightController(Transform rigRoot)
+    {
+        if (rigRoot != null)
+        {
+            foreach (Transform candidate in
+                     rigRoot.GetComponentsInChildren<Transform>(true))
+            {
+                if (candidate.name == "Right Controller")
+                {
+                    return candidate;
+                }
+            }
+        }
+
+        foreach (Transform candidate in
+                 FindObjectsByType<Transform>(FindObjectsSortMode.None))
+        {
+            if (candidate.name == "Right Controller")
+            {
+                return candidate;
+            }
+        }
+
+        return null;
+    }
+
     // ------------------------------------------------------------------
     // Pointing
     // ------------------------------------------------------------------
@@ -106,6 +143,9 @@ public class PointerSource : MonoBehaviour
 
         if (UsingXr)
         {
+            if (rightHand == null)
+                return false;
+
             ray = new Ray(rightHand.position, rightHand.forward);
             return true;
         }
@@ -243,7 +283,24 @@ public class PointerSource : MonoBehaviour
             return;
         }
 
-        hand.TryGetFeatureValue(UnityEngine.XR.CommonUsages.triggerButton, out triggerNow);
-        hand.TryGetFeatureValue(UnityEngine.XR.CommonUsages.gripButton, out gripNow);
+        bool triggerButton =
+            hand.TryGetFeatureValue(
+                UnityEngine.XR.CommonUsages.triggerButton, out bool triggerPressed) &&
+            triggerPressed;
+        bool triggerAxis =
+            hand.TryGetFeatureValue(
+                UnityEngine.XR.CommonUsages.trigger, out float triggerValue) &&
+            triggerValue >= 0.5f;
+        bool gripButton =
+            hand.TryGetFeatureValue(
+                UnityEngine.XR.CommonUsages.gripButton, out bool gripPressed) &&
+            gripPressed;
+        bool gripAxis =
+            hand.TryGetFeatureValue(
+                UnityEngine.XR.CommonUsages.grip, out float gripValue) &&
+            gripValue >= 0.5f;
+
+        triggerNow = triggerButton || triggerAxis;
+        gripNow = gripButton || gripAxis;
     }
 }

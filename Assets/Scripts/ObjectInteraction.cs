@@ -71,7 +71,7 @@ public class ObjectInteraction : MonoBehaviour
 
             for (int i = 0; i < materials.Length; i++)
             {
-                materials[i].color = Color.cyan;
+                materials[i].color = Color.blue;
             }
         }
     }

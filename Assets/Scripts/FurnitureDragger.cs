@@ -74,7 +74,12 @@ public class FurnitureDragger : MonoBehaviour
     private void Update()
     {
         if (pointer == null)
-            return;
+        {
+            pointer = PointerSource.Resolve();
+
+            if (pointer == null)
+                return;
+        }
 
         if (held == null)
         {

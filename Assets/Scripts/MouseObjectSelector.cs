@@ -38,14 +38,16 @@ public class MouseObjectSelector : MonoBehaviour
 
         if (pointer == null)
         {
-            pointer = PointerSource.Resolve();
+            pointer = GetComponent<PointerSource>();
         }
 
         if (pointer == null)
-        {
+            pointer = PointerSource.Resolve();
+
+        if (pointer == null)
             pointer = gameObject.AddComponent<PointerSource>();
-            Debug.Log("PointerSource was missing and has been added to this object.", this);
-        }
+
+        pointer.Configure(mainCamera);
     }
 
     private void Update()
