@@ -124,9 +124,10 @@ def health() -> dict:
 
 
 class Job:
-    def __init__(self, prompt: str) -> None:
+    def __init__(self, prompt: str, operation: str = "add") -> None:
         self.id = uuid.uuid4().hex[:12]
         self.prompt = prompt
+        self.operation = operation      # add | texture
         self.status = "queued"          # queued | running | awaiting_review | done | failed | cancelled
         self.phase = "image"            # image | model
         self.stage = "Queued"
@@ -147,6 +148,7 @@ class Job:
         return {
             "jobId": self.id,
             "prompt": self.prompt,
+            "operation": self.operation,
             "status": self.status,
             "phase": self.phase,
             "stage": self.stage,
@@ -318,7 +320,7 @@ def post_generate(body: GenerateRequest) -> dict:
         raise HTTPException(status_code=503, detail={"message": "AI server not ready", "missing": info["missing"]})
     if not body.prompt.strip():
         raise HTTPException(status_code=400, detail="prompt is empty")
-    job = Job(body.prompt.strip())
+    job = Job(body.prompt.strip(), operation=body.operation.strip() or "add")
     JOBS[job.id] = job
     start_image(job)
     return job.to_dict()
@@ -337,6 +339,8 @@ def post_accept(job_id: str) -> dict:
     job = JOBS.get(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="unknown job")
+    if getattr(job, "operation", "add") == "texture":
+        raise HTTPException(status_code=409, detail="texture jobs keep the existing mesh; apply the image in Unity")
     if job.status != "awaiting_review" or not job.image.exists():
         raise HTTPException(status_code=409, detail=f"job is {job.status}, not awaiting review")
     start_model(job)

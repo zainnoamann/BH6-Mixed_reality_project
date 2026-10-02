@@ -1,22 +1,24 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
-using UnityEngine.XR;
 
 /// <summary>
-/// Right-drag to look around: yaw turns the body, pitch tilts the camera.
+/// Look around in Play / Game view. Scene-view orbit does not work here.
 ///
-/// The split matters. The body carries the CharacterController, and a capsule is always
-/// aligned to its transform's up axis - so pitching the body would tip the capsule over and
-/// physics would shove the player sideways. Yawing the body and pitching only the camera
-/// keeps the capsule upright while giving a full 360 look.
+///   Middle-mouse drag     - look (most reliable in the Unity editor on Mac)
+///   Alt + left-drag       - look (same idea as Scene view)
+///   Right-drag            - look (often stolen by the editor on macOS)
+///   Left / Right arrows   - turn without the mouse
 ///
-/// Movement reads the camera's flattened forward, so turning here steers walking too.
+/// Yaw turns the body, pitch tilts the camera so the CharacterController stays upright.
 /// </summary>
 public class CameraController : MonoBehaviour
 {
     [Header("Look")]
     [Tooltip("Degrees turned per pixel of mouse movement.")]
     [SerializeField, Range(0.01f, 0.5f)] private float rotationSpeed = 0.12f;
+
+    [Tooltip("Degrees per second when turning with the arrow keys.")]
+    [SerializeField] private float keyboardTurnSpeed = 90f;
 
     [Tooltip("Largest mouse delta accepted in one frame. Stops the view snapping when the " +
              "window regains focus or a frame hitches.")]
@@ -28,27 +30,19 @@ public class CameraController : MonoBehaviour
     [Tooltip("Hide and lock the cursor while looking, so a drag never runs out of screen.")]
     [SerializeField] private bool lockCursorWhileLooking = true;
 
-    [Header("XR Turn")]
-    [SerializeField, Range(15f, 90f)] private float snapTurnAngle = 45f;
-    [SerializeField, Range(0.1f, 1f)] private float snapTurnThreshold = 0.7f;
-
     [Tooltip("Body that yaws. Left empty, the parent is used, or this transform if it has none.")]
     [SerializeField] private Transform body;
 
     private float yaw;
     private float pitch;
     private bool looking;
-    private bool snapTurnReady = true;
     private Vector2 cursorBeforeLook;
 
     private void Awake()
     {
         if (body == null)
         {
-            CharacterController playerController = GetComponentInParent<CharacterController>();
-            body = playerController != null
-                ? playerController.transform
-                : transform.parent != null ? transform.parent : transform;
+            body = transform.parent != null ? transform.parent : transform;
         }
 
         yaw = body.eulerAngles.y;
@@ -59,12 +53,12 @@ public class CameraController : MonoBehaviour
 
     private void Update()
     {
-        UnityEngine.XR.InputDevice head = InputDevices.GetDeviceAtXRNode(XRNode.Head);
-        if (XRSettings.isDeviceActive && head.isValid)
+        if (UiInput.KeyboardBlocked)
         {
-            UpdateXrTurn();
             return;
         }
+
+        TurnWithKeyboard();
 
         Mouse mouse = Mouse.current;
 
@@ -73,7 +67,9 @@ public class CameraController : MonoBehaviour
             return;
         }
 
-        if (mouse.rightButton.wasPressedThisFrame && !UiInput.PointerOverUI)
+        bool wantLook = !UiInput.PointerOverUI && LookHeld(mouse);
+
+        if (wantLook && !looking)
         {
             looking = true;
             cursorBeforeLook = mouse.position.ReadValue();
@@ -85,12 +81,13 @@ public class CameraController : MonoBehaviour
             }
         }
 
-        if (mouse.rightButton.wasReleasedThisFrame && looking)
+        if (!wantLook && looking)
         {
             ReleaseCursor();
+            return;
         }
 
-        if (!looking || !mouse.rightButton.isPressed)
+        if (!looking)
         {
             return;
         }
@@ -106,28 +103,37 @@ public class CameraController : MonoBehaviour
         Apply();
     }
 
-    private void UpdateXrTurn()
+    private static bool LookHeld(Mouse mouse)
     {
-        UnityEngine.XR.InputDevice rightHand =
-            InputDevices.GetDeviceAtXRNode(XRNode.RightHand);
-        if (!rightHand.isValid ||
-            !rightHand.TryGetFeatureValue(
-                UnityEngine.XR.CommonUsages.primary2DAxis, out Vector2 axis))
+        Keyboard keyboard = Keyboard.current;
+        bool alt = keyboard != null && (keyboard.leftAltKey.isPressed || keyboard.rightAltKey.isPressed);
+
+        return mouse.middleButton.isPressed
+            || mouse.rightButton.isPressed
+            || (alt && mouse.leftButton.isPressed);
+    }
+
+    private void TurnWithKeyboard()
+    {
+        Keyboard keyboard = Keyboard.current;
+
+        if (keyboard == null)
         {
-            snapTurnReady = true;
             return;
         }
 
-        if (Mathf.Abs(axis.x) < snapTurnThreshold * 0.4f)
+        float turn = 0f;
+
+        if (keyboard.leftArrowKey.isPressed) turn -= 1f;
+        if (keyboard.rightArrowKey.isPressed) turn += 1f;
+
+        if (Mathf.Approximately(turn, 0f))
         {
-            snapTurnReady = true;
+            return;
         }
 
-        if (!snapTurnReady || Mathf.Abs(axis.x) < snapTurnThreshold)
-            return;
-
-        body.Rotate(Vector3.up, Mathf.Sign(axis.x) * snapTurnAngle, Space.World);
-        snapTurnReady = false;
+        yaw += turn * keyboardTurnSpeed * Time.deltaTime;
+        Apply();
     }
 
     private void Apply()
