@@ -3,6 +3,7 @@ using UnityEngine;
 public class InteractionSetup : MonoBehaviour
 {
     [SerializeField] private Transform roomRoot;
+    [SerializeField] private string roomRootName = "Updated_Model";
 
     private void Start()
     {
@@ -11,9 +12,11 @@ public class InteractionSetup : MonoBehaviour
 
     private void SetupObjects()
     {
+        roomRoot = RoomRootResolver.Resolve(roomRoot, roomRootName, gameObject.scene);
+
         if (roomRoot == null)
         {
-            Debug.LogError("Room Root has not been assigned.");
+            Debug.LogError($"Room root '{roomRootName}' was not found in this scene.", this);
             return;
         }
 
