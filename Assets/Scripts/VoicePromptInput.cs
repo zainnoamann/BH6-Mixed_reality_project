@@ -9,8 +9,8 @@ using UnityEngine.Networking;
 /// <summary>
 /// Push-to-talk for the "describe what to add" box.
 ///
-/// Hold the key (default V) or call StartRecording()/StopRecording() from a UI button's
-/// pointer down/up or a VR controller action. On release the clip is sent to the STT
+/// Hold the key (default V), or the headset controller button (default left Y), or call
+/// StartRecording()/StopRecording() from a UI button's pointer down/up. On release the clip is sent to the STT
 /// service (AI Models/stt/stt_service.py) and the transcript is written into the prompt
 /// field, so the existing Generate button works unchanged. Set autoGenerate to skip it.
 ///
@@ -20,6 +20,8 @@ using UnityEngine.Networking;
 /// </summary>
 public class VoicePromptInput : MonoBehaviour
 {
+    public enum TalkButton { None, LeftY, LeftX, RightB, RightA }
+
     [SerializeField] private string sttUrl = "http://127.0.0.1:8766/transcribe";
     [SerializeField] private TMP_InputField promptInputField;
     [SerializeField] private TMP_Text statusText;
@@ -29,6 +31,9 @@ public class VoicePromptInput : MonoBehaviour
     [SerializeField] private float preRollSeconds = 0.4f;
     [SerializeField] private float tailSeconds = 0.3f;
 
+    [Tooltip("Headset controller button to hold while speaking. The right-hand B button is already Cancel in PointerSource.")]
+    [SerializeField] private TalkButton controllerButton = TalkButton.LeftY;
+
     private const int SampleRate = 16000;
     private AudioClip ring;
     private string device;
@@ -36,6 +41,32 @@ public class VoicePromptInput : MonoBehaviour
     private bool finishing;
     private int startSample;
     private float startTime;
+    private InputAction talkAction;
+
+    private void Awake()
+    {
+        if (controllerButton == TalkButton.None) return;
+
+        bool left = controllerButton == TalkButton.LeftY || controllerButton == TalkButton.LeftX;
+        bool secondary = controllerButton == TalkButton.LeftY || controllerButton == TalkButton.RightB;
+        string hand = left ? "LeftHand" : "RightHand";
+
+        talkAction = new InputAction("VoiceTalk", InputActionType.Button);
+        talkAction.AddBinding("<XRController>{" + hand + "}/{" + (secondary ? "SecondaryButton" : "PrimaryButton") + "}");
+        talkAction.AddBinding("<OculusTouchController>{" + hand + "}/" + (secondary ? "secondaryButton" : "primaryButton"));
+        talkAction.started += _ => StartRecording();
+        talkAction.canceled += _ => StopRecording();
+    }
+
+    private void OnEnable()
+    {
+        if (talkAction != null) talkAction.Enable();
+    }
+
+    private void OnDisable()
+    {
+        if (talkAction != null) talkAction.Disable();
+    }
 
     private void Start()
     {
@@ -44,6 +75,7 @@ public class VoicePromptInput : MonoBehaviour
 
     private void OnDestroy()
     {
+        if (talkAction != null) talkAction.Dispose();
         if (device != null && Microphone.IsRecording(device)) Microphone.End(device);
     }
 
