@@ -50,6 +50,27 @@ public class PointerSource : MonoBehaviour
     private bool cancelLast;
 
     private float nextSearchTime;
+
+    [Header("Headset pointer")]
+    [Tooltip("Draw a line and a dot from the right controller.")]
+    [SerializeField] private bool showPointer = true;
+
+    [SerializeField] private Color pointerColour = new Color(0.3f, 0.9f, 1f, 1f);
+
+    [SerializeField] private float pointerLength = 8f;
+
+    [Tooltip("How strongly hand shake is smoothed. Lower = steadier but slower to follow.")]
+    [SerializeField] private float aimSmoothing = 18f;
+
+    private Transform xriOrigin;
+    private float nextOriginSearch;
+    private int aimFrame = -1;
+    private bool aimStarted;
+    private Vector3 aimPosition;
+    private Vector3 aimDirection = Vector3.forward;
+
+    private LineRenderer pointerLine;
+    private Transform pointerDot;
     private int uiFrame = -1;
     private bool uiResult;
 
@@ -86,6 +107,142 @@ public class PointerSource : MonoBehaviour
         // Read the buttons every frame, so "pressed this frame" is always correct
         // even when nobody asked last frame.
         Refresh();
+    }
+
+    private void LateUpdate()
+    {
+        DrawPointer();
+    }
+
+    // ------------------------------------------------------------------
+    // Aim: a steady ray, and a visible pointer
+    // ------------------------------------------------------------------
+
+    /// <summary>
+    /// Works out the pointing ray once per frame.
+    ///
+    /// A hand is never perfectly still, and a small shake at the wrist becomes a big jump
+    /// two metres away. So the ray is smoothed a little. When XR Interaction Toolkit has
+    /// made its own stabilised ray origin (the one its visible UI ray uses), that is used
+    /// instead, so this pointer and the UI ray point at exactly the same place.
+    /// </summary>
+    private void UpdateAim()
+    {
+        if (aimFrame == Time.frameCount)
+            return;
+
+        aimFrame = Time.frameCount;
+
+        Vector3 position = rightHand.position;
+        Vector3 direction = rightHand.forward;
+
+        if (xriOrigin == null && Time.unscaledTime >= nextOriginSearch)
+        {
+            nextOriginSearch = Time.unscaledTime + 1f;
+            GameObject found = GameObject.Find("[Right CurveInteractionCaster] Stabilization Cast Origin");
+            xriOrigin = found != null ? found.transform : null;
+        }
+
+        // Only trust it while it really sits at the hand; otherwise it is stale.
+        if (xriOrigin != null && xriOrigin.gameObject.activeInHierarchy &&
+            (xriOrigin.position - rightHand.position).sqrMagnitude < 0.25f)
+        {
+            position = xriOrigin.position;
+            direction = xriOrigin.forward;
+        }
+
+        if (!aimStarted)
+        {
+            aimStarted = true;
+            aimPosition = position;
+            aimDirection = direction;
+            return;
+        }
+
+        float blend = 1f - Mathf.Exp(-aimSmoothing * Time.unscaledDeltaTime);
+        aimPosition = Vector3.Lerp(aimPosition, position, blend);
+        aimDirection = Vector3.Slerp(aimDirection, direction, blend).normalized;
+    }
+
+    /// <summary>
+    /// A thin line from the controller with a dot where it lands, so it is clear what
+    /// the trigger will act on. Hidden on desktop, and while the ray is on the menu
+    /// (XR Interaction Toolkit draws its own ray there).
+    /// </summary>
+    private void DrawPointer()
+    {
+        bool show = showPointer && UsingXr && TryGetRay(out Ray ray) && !RayOverUi();
+
+        if (!show)
+        {
+            if (pointerLine != null) pointerLine.enabled = false;
+            if (pointerDot != null) pointerDot.gameObject.SetActive(false);
+            return;
+        }
+
+        if (pointerLine == null)
+        {
+            BuildPointer();
+        }
+
+        TryGetRay(out Ray aim);
+
+        Vector3 end = aim.origin + aim.direction * pointerLength;
+        bool hitSomething = Physics.Raycast(aim, out RaycastHit hit, pointerLength, ~0,
+                                            QueryTriggerInteraction.Ignore);
+
+        if (hitSomething)
+        {
+            end = hit.point;
+        }
+
+        pointerLine.enabled = true;
+        pointerLine.SetPosition(0, aim.origin);
+        pointerLine.SetPosition(1, end);
+
+        pointerDot.gameObject.SetActive(hitSomething);
+        pointerDot.position = end;
+
+        // Keep the dot the same size to the eye, near or far.
+        float distance = Vector3.Distance(aim.origin, end);
+        pointerDot.localScale = Vector3.one * Mathf.Clamp(distance * 0.015f, 0.01f, 0.06f);
+    }
+
+    private void BuildPointer()
+    {
+        Shader shader = Shader.Find("Universal Render Pipeline/Unlit");
+        if (shader == null) shader = Shader.Find("Sprites/Default");
+
+        Material material = new Material(shader);
+        material.color = pointerColour;
+        if (material.HasProperty("_BaseColor")) material.SetColor("_BaseColor", pointerColour);
+
+        GameObject lineObject = new GameObject("PointerLine");
+        lineObject.transform.SetParent(transform, false);
+
+        pointerLine = lineObject.AddComponent<LineRenderer>();
+        pointerLine.useWorldSpace = true;
+        pointerLine.positionCount = 2;
+        pointerLine.startWidth = 0.006f;
+        pointerLine.endWidth = 0.003f;
+        pointerLine.material = material;
+        pointerLine.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        pointerLine.receiveShadows = false;
+
+        GameObject dot = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        dot.name = "PointerDot";
+        dot.transform.SetParent(transform, false);
+
+        // No collider: the dot must never block the ray it is showing.
+        Collider dotCollider = dot.GetComponent<Collider>();
+        if (dotCollider != null) Destroy(dotCollider);
+
+        Renderer dotRenderer = dot.GetComponent<Renderer>();
+        dotRenderer.sharedMaterial = material;
+        dotRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        dotRenderer.receiveShadows = false;
+
+        pointerDot = dot.transform;
     }
 
     /// <summary>True when a headset is connected and being worn.</summary>
@@ -189,7 +346,8 @@ public class PointerSource : MonoBehaviour
             if (rightHand == null)
                 return false;
 
-            ray = new Ray(rightHand.position, rightHand.forward);
+            UpdateAim();
+            ray = new Ray(aimPosition, aimDirection);
             return true;
         }
 

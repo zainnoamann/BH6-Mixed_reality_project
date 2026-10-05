@@ -1,4 +1,8 @@
+using System.Collections.Generic;
+using TMPro;
 using UnityEngine;
+using UnityEngine.Rendering;
+using UnityEngine.UI;
 
 /// <summary>
 /// Keeps the world-space menu canvas comfortable to use in the headset.
@@ -8,6 +12,8 @@ using UnityEngine;
 ///   - When you turn or walk away, it glides back in front of you.
 ///   - It sits a little below eye level and is drawn bigger than before.
 ///   - It never goes through a wall: near a wall it comes closer to you instead.
+///   - It is drawn on top of the room, so even when an edge does reach a wall or a
+///     piece of furniture, the buttons stay visible instead of disappearing behind it.
 ///
 /// Added automatically to the world-space canvas by MouseObjectSelector. It only
 /// acts in the headset; on desktop the canvas is left exactly as it is in the scene.
@@ -43,6 +49,11 @@ public class VrMenuPlacer : MonoBehaviour
     private bool roomKnown;
     private Vector3 lastForward = Vector3.forward;
 
+    private readonly HashSet<Graphic> onTop = new HashSet<Graphic>();
+    private Material onTopMaterial;
+    private float nextOnTopCheck;
+    private static readonly int ZTestMode = Shader.PropertyToID("unity_GUIZTestMode");
+
     private void LateUpdate()
     {
         PointerSource pointer = PointerSource.Resolve();
@@ -65,6 +76,13 @@ public class VrMenuPlacer : MonoBehaviour
         if (!started)
         {
             Begin();
+        }
+
+        if (Time.unscaledTime >= nextOnTopCheck)
+        {
+            // Again every half second: the toolbar, keyboard and panels appear later.
+            nextOnTopCheck = Time.unscaledTime + 0.5f;
+            DrawOnTop();
         }
 
         Vector3 eye = head.transform.position;
@@ -142,6 +160,42 @@ public class VrMenuPlacer : MonoBehaviour
         Vector3 start = ClampToRoom(eye + forward * distance, eye);
         start.y = eye.y + heightOffset;
         transform.position = start;
+    }
+
+    /// <summary>
+    /// Makes every image and text of the menu ignore the depth of the room, so walls and
+    /// furniture can never hide it. UI shaders read their depth test from the
+    /// unity_GUIZTestMode value; setting it to Always on the material does this.
+    /// </summary>
+    private void DrawOnTop()
+    {
+        foreach (Graphic graphic in GetComponentsInChildren<Graphic>(true))
+        {
+            if (graphic == null || !onTop.Add(graphic))
+            {
+                continue;
+            }
+
+            if (graphic is TMP_Text text)
+            {
+                // fontMaterial is this text's own copy, so the shared font asset is not changed.
+                text.fontMaterial.SetInt(ZTestMode, (int)CompareFunction.Always);
+                continue;
+            }
+
+            if (graphic.material != Graphic.defaultGraphicMaterial)
+            {
+                continue; // a custom material: leave it alone
+            }
+
+            if (onTopMaterial == null)
+            {
+                onTopMaterial = new Material(Graphic.defaultGraphicMaterial);
+                onTopMaterial.SetInt(ZTestMode, (int)CompareFunction.Always);
+            }
+
+            graphic.material = onTopMaterial;
+        }
     }
 
     /// <summary>Keeps the point inside the walls. Skipped when the user is outside the room.</summary>
