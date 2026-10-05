@@ -70,6 +70,14 @@ public class MouseObjectSelector : MonoBehaviour
         if (canvas != null)
         {
             VrKeyboard.Create(canvas);
+
+            // Headset: float the menu in front of the user, bigger, and inside the walls.
+            Canvas uiCanvas = canvas.GetComponent<Canvas>();
+            if (uiCanvas != null && uiCanvas.renderMode == RenderMode.WorldSpace &&
+                canvas.GetComponent<VrMenuPlacer>() == null)
+            {
+                canvas.gameObject.AddComponent<VrMenuPlacer>().roomRootName = roomRootName;
+            }
             toolbar = SelectionToolbar.Create(canvas);
             toolbar.MoveClicked += MoveSelected;
             toolbar.ResizeClicked += ResizeSelected;
