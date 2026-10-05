@@ -799,6 +799,23 @@ public class PlacementDragger : MonoBehaviour
     {
         Vector3 point;
 
+        PointerSource pointer = PointerSource.Resolve();
+
+        if (viewCamera != null && pointer != null && pointer.UsingXr)
+        {
+            // Headset: the user looks straight ahead at the menu, so "where the camera
+            // looks on the floor" is far away. Put it on the floor 1.5 m in front instead,
+            // slightly to the right so the menu panel does not hide it.
+            Vector3 forward = Vector3.ProjectOnPlane(viewCamera.transform.forward, Vector3.up).normalized;
+            Vector3 right = Vector3.Cross(Vector3.up, forward);
+
+            point = viewCamera.transform.position + forward * 1.5f + right * 0.4f;
+            point.y = floorY;
+
+            // Outside the walls: Contain() in MoveBaseTo pulls it back to the nearest spot inside.
+            return point;
+        }
+
         if (viewCamera != null)
         {
             Ray ray = viewCamera.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));

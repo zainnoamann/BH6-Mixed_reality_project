@@ -6,7 +6,7 @@ using UnityEngine.UI;
 /// <summary>
 /// Small bar at the bottom of the screen that appears when an object is selected.
 ///
-///   [ Selected: table ]  [ Move ]  [ Rotate ]  [ Resize ]  [ Change Texture ]  [ Close ]
+///   [ Selected: table ]  [ Move ]  [ Rotate ]  [ Resize ]  [ Change Texture ]  [ Delete ]  [ Close ]
 ///
 /// Clicking an object only selects it. The texture panel opens only from here,
 /// so a click in the room no longer pops up the Change Texture form every time.
@@ -19,6 +19,7 @@ public class SelectionToolbar : MonoBehaviour
     public event Action MoveClicked;
     public event Action ResizeClicked;
     public event Action RotateClicked;
+    public event Action DeleteClicked;
     public event Action TextureClicked;
     public event Action CloseClicked;
 
@@ -27,11 +28,13 @@ public class SelectionToolbar : MonoBehaviour
     private GameObject moveButton;
     private GameObject resizeButton;
     private GameObject rotateButton;
+    private GameObject deleteButton;
     private GameObject textureButton;
 
     private static readonly Color PanelColour = new Color(0.12f, 0.12f, 0.14f, 0.92f);
     private static readonly Color ButtonColour = new Color(0.13f, 0.55f, 0.13f, 1f);
     private static readonly Color CloseColour = new Color(0.35f, 0.35f, 0.38f, 1f);
+    private static readonly Color DeleteColour = new Color(0.65f, 0.15f, 0.15f, 1f);
 
     public bool IsVisible => panel != null && panel.activeSelf;
 
@@ -83,6 +86,7 @@ public class SelectionToolbar : MonoBehaviour
         rotateButton = CreateButton("Rotate", ButtonColour, () => RotateClicked?.Invoke());
         resizeButton = CreateButton("Resize", ButtonColour, () => ResizeClicked?.Invoke());
         textureButton = CreateButton("Change Texture", ButtonColour, () => TextureClicked?.Invoke());
+        deleteButton = CreateButton("Delete", DeleteColour, () => DeleteClicked?.Invoke());
         CreateButton("Close", CloseColour, () => CloseClicked?.Invoke());
     }
 
@@ -96,6 +100,7 @@ public class SelectionToolbar : MonoBehaviour
         rotateButton.SetActive(true);
         resizeButton.SetActive(true);
         textureButton.SetActive(true);
+        deleteButton.SetActive(true);
     }
 
     /// <summary>While moving: instructions only, actions hidden.</summary>
@@ -108,6 +113,7 @@ public class SelectionToolbar : MonoBehaviour
         rotateButton.SetActive(false);
         resizeButton.SetActive(false);
         textureButton.SetActive(false);
+        deleteButton.SetActive(false);
     }
 
     public void Hide()

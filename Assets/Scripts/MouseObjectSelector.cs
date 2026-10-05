@@ -74,6 +74,7 @@ public class MouseObjectSelector : MonoBehaviour
             toolbar.MoveClicked += MoveSelected;
             toolbar.ResizeClicked += ResizeSelected;
             toolbar.RotateClicked += RotateSelected;
+            toolbar.DeleteClicked += DeleteSelected;
             toolbar.TextureClicked += OpenTexturePanel;
             toolbar.CloseClicked += Deselect;
         }
@@ -128,6 +129,32 @@ public class MouseObjectSelector : MonoBehaviour
     public void MoveSelected()
     {
         StartMove(selectedObject);
+    }
+
+    /// <summary>Selects an object from code, for example a new item right after Accept.</summary>
+    public void SelectObject(ObjectInteraction target)
+    {
+        if (target == null || RoomShell.IsFixed(target.gameObject.name))
+            return;
+
+        Select(target);
+    }
+
+    /// <summary>Removes the selected object from the room (toolbar Delete button).</summary>
+    public void DeleteSelected()
+    {
+        ObjectInteraction target = selectedObject;
+
+        if (target == null || (placer != null && placer.IsActive))
+            return;
+
+        if (hoveredObject == target)
+        {
+            hoveredObject = null;
+        }
+
+        Deselect();
+        Destroy(target.gameObject);
     }
 
     /// <summary>Starts rotating the selected object in place (toolbar Rotate button).</summary>
