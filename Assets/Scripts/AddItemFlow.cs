@@ -631,7 +631,7 @@ public class AddItemFlow : MonoBehaviour
 
         PointerSource pointer = PointerSource.Resolve();
         Say(resultStatusText, pointer != null && pointer.UsingXr
-            ? "Point to place it, trigger to drop. A / X rotates. Then Accept."
+            ? "Point to place it, trigger to drop. X / Y rotates. Then Accept."
             : "Move the mouse to place it, click to drop. Q / E or scroll rotates. Then Accept.");
         Show(reviewPanel, true);
     }

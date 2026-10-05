@@ -370,7 +370,7 @@ public class MouseObjectSelector : MonoBehaviour
         {
             toolbar.ShowHint("Moving " + target.gameObject.name + ": " + Hint(
                 "click to place  |  Q / E or scroll to rotate  |  + / - to resize  |  Esc to cancel",
-                "trigger to place  |  A / X to rotate  |  B to cancel"));
+                "trigger to place  |  X / Y to rotate  |  B to cancel"));
         }
     }
 
@@ -393,7 +393,7 @@ public class MouseObjectSelector : MonoBehaviour
 
         toolbar.ShowHint(resizeHint + ": " + size + "  |  " + Hint(
             "scroll or + / -  |  click to keep  |  Esc to cancel",
-            "A bigger, X smaller  |  trigger to keep  |  B to cancel"));
+            "Y bigger, X smaller  |  trigger to keep  |  B to cancel"));
     }
 
     /// <summary>Live angle while rotating, e.g. "Turned +30 degrees".</summary>
@@ -404,7 +404,7 @@ public class MouseObjectSelector : MonoBehaviour
 
         toolbar.ShowHint(rotateHint + ": " + angle + "  |  " + Hint(
             "scroll or Q / E (Shift = fine)  |  click to keep  |  Esc to cancel",
-            "A right, X left  |  trigger to keep  |  B to cancel"));
+            "Y right, X left  |  trigger to keep  |  B to cancel"));
     }
 
     // ------------------------------------------------------------------ helpers

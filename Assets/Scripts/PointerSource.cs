@@ -13,8 +13,10 @@ using UnityEngine.XR;
 /// Headset buttons:
 ///   Trigger (right)  - select / place / confirm
 ///   Grip (right)     - pick up the object you point at
-///   A (right)        - step up   (rotate right, or bigger while resizing)
+///   Y (left)         - step up   (rotate right, or bigger while resizing)
 ///   X (left)         - step down (rotate left, or smaller while resizing)
+///
+/// A on the right controller is left alone: the XR rig uses it for Jump.
 ///   B (right)        - cancel / deselect
 ///
 /// On desktop nothing changes: the ray comes from the mouse and select is left click.
@@ -296,7 +298,7 @@ public class PointerSource : MonoBehaviour
         }
     }
 
-    /// <summary>Headset only: A on the right controller. Rotate right / make bigger.</summary>
+    /// <summary>Headset only: Y on the left controller. Rotate right / make bigger.</summary>
     public bool StepUpPressed
     {
         get
@@ -389,21 +391,22 @@ public class PointerSource : MonoBehaviour
                           UnityEngine.XR.CommonUsages.primaryButton, out bool xPressed) &&
                       xPressed;
 
+        // Y, not A: the XR rig's Jump action is bound to A, so A made the player hop.
+        stepUpNow = left.isValid &&
+                    left.TryGetFeatureValue(
+                        UnityEngine.XR.CommonUsages.secondaryButton, out bool yPressed) &&
+                    yPressed;
+
         UnityEngine.XR.InputDevice hand = InputDevices.GetDeviceAtXRNode(XRNode.RightHand);
 
         if (!hand.isValid)
         {
             triggerNow = false;
             gripNow = false;
-            stepUpNow = false;
             cancelNow = false;
             return;
         }
 
-        stepUpNow =
-            hand.TryGetFeatureValue(
-                UnityEngine.XR.CommonUsages.primaryButton, out bool aPressed) &&
-            aPressed;
         cancelNow =
             hand.TryGetFeatureValue(
                 UnityEngine.XR.CommonUsages.secondaryButton, out bool bPressed) &&

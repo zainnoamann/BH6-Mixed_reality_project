@@ -13,7 +13,7 @@ using UnityEngine.InputSystem;
 ///   Escape         - cancel
 ///
 /// In the headset (PointerSource): the object follows the right controller ray,
-/// trigger places it, A / X rotate (or resize in Resize mode), B cancels.
+/// trigger places it, X / Y rotate (or resize in Resize mode), B cancels.
 ///
 /// Preview: green = the spot is free, red = it overlaps other furniture.
 ///
@@ -387,7 +387,7 @@ public class PlacementDragger : MonoBehaviour
 
     /// <summary>
     /// Headset version of the three modes. Same rules as the mouse: the ray moves the
-    /// object, trigger confirms (refused while red), B cancels, A / X step.
+    /// object, trigger confirms (refused while red), B cancels, X / Y step.
     /// </summary>
     private void UpdateXr(PointerSource pointer)
     {
