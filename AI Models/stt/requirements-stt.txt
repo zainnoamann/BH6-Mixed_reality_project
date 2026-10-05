@@ -1,0 +1,11 @@
+# Speech-to-text service. Lives in its own venv (.venv-stt), never in .venv-a / .venv-b / .venv-server.
+# RTX 5090 (Blackwell, sm_120) needs CTranslate2 >= 4.7 and a CUDA 12.x runtime.
+faster-whisper>=1.2.0
+ctranslate2>=4.7.0
+nvidia-cublas-cu12
+nvidia-cudnn-cu12==9.*
+fastapi>=0.110
+uvicorn[standard]>=0.29
+python-multipart>=0.0.9
+numpy
+soundfile

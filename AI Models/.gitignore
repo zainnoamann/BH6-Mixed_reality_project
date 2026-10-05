@@ -16,3 +16,4 @@ jobs/
 logs/
 prompt_embeds/
 status.json
+.venv-stt/
