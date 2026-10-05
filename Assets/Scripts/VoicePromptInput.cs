@@ -13,6 +13,10 @@ using UnityEngine.Networking;
 /// pointer down/up or a VR controller action. On release the clip is sent to the STT
 /// service (AI Models/stt/stt_service.py) and the transcript is written into the prompt
 /// field, so the existing Generate button works unchanged. Set autoGenerate to skip it.
+///
+/// The microphone runs continuously into a short ring buffer, and each clip starts a
+/// little before the key was pressed and ends a little after it was released, so the
+/// first and last words are not clipped.
 /// </summary>
 public class VoicePromptInput : MonoBehaviour
 {
@@ -22,27 +26,60 @@ public class VoicePromptInput : MonoBehaviour
     [SerializeField] private Key holdKey = Key.V;
     [SerializeField] private int maxSeconds = 15;
     [SerializeField] private bool autoGenerate = false;
+    [SerializeField] private float preRollSeconds = 0.4f;
+    [SerializeField] private float tailSeconds = 0.3f;
 
     private const int SampleRate = 16000;
-    private AudioClip clip;
+    private AudioClip ring;
     private string device;
     private bool recording;
+    private bool finishing;
+    private int startSample;
+    private float startTime;
+
+    private void Start()
+    {
+        OpenMic();
+    }
+
+    private void OnDestroy()
+    {
+        if (device != null && Microphone.IsRecording(device)) Microphone.End(device);
+    }
 
     private void Update()
     {
         Keyboard kb = Keyboard.current;
-        if (kb == null) return;
-        if (kb[holdKey].wasPressedThisFrame && !(promptInputField != null && promptInputField.isFocused)) StartRecording();
-        if (kb[holdKey].wasReleasedThisFrame) StopRecording();
+        if (kb != null)
+        {
+            if (kb[holdKey].wasPressedThisFrame && !(promptInputField != null && promptInputField.isFocused)) StartRecording();
+            if (kb[holdKey].wasReleasedThisFrame) StopRecording();
+        }
+
+        if (recording && Time.unscaledTime - startTime > maxSeconds) StopRecording();
+    }
+
+    private bool OpenMic()
+    {
+        if (ring != null && device != null && Microphone.IsRecording(device)) return true;
+        if (Microphone.devices.Length == 0) return false;
+
+        device = Microphone.devices[0];
+        ring = Microphone.Start(device, true, maxSeconds + 2, SampleRate);
+        return ring != null;
     }
 
     public void StartRecording()
     {
-        if (recording) return;
-        if (Microphone.devices.Length == 0) { SetStatus("No microphone found."); return; }
+        if (recording || finishing) return;
+        if (!OpenMic()) { SetStatus("No microphone found."); return; }
 
-        device = Microphone.devices[0];
-        clip = Microphone.Start(device, false, maxSeconds, SampleRate);
+        int pos = Microphone.GetPosition(device);
+        if (pos <= 0) { SetStatus("Microphone warming up - try again."); return; }
+
+        int preRoll = Mathf.RoundToInt(preRollSeconds * ring.frequency);
+        startSample = ((pos - preRoll) % ring.samples + ring.samples) % ring.samples;
+        startTime = Time.unscaledTime;
         recording = true;
         SetStatus("Listening...");
     }
@@ -51,16 +88,38 @@ public class VoicePromptInput : MonoBehaviour
     {
         if (!recording) return;
         recording = false;
+        StartCoroutine(FinishAfterTail());
+    }
 
-        int samples = Microphone.GetPosition(device);
-        Microphone.End(device);
+    private IEnumerator FinishAfterTail()
+    {
+        finishing = true;
+        yield return new WaitForSecondsRealtime(tailSeconds);
+        finishing = false;
 
-        if (samples < SampleRate / 4) { SetStatus("Too short - hold the key while speaking."); return; }
+        int total = ring.samples;
+        int end = Microphone.GetPosition(device);
+        int count = ((end - startSample) % total + total) % total;
 
-        float[] data = new float[samples * clip.channels];
-        clip.GetData(data, 0);
+        if (count < ring.frequency / 4) { SetStatus("Too short - hold the key while speaking."); yield break; }
+
+        int channels = ring.channels;
+        float[] all = new float[total * channels];
+        ring.GetData(all, 0);
+
+        float[] clip = new float[count * channels];
+        for (int i = 0; i < count; i++)
+        {
+            int src = ((startSample + i) % total) * channels;
+            for (int c = 0; c < channels; c++) clip[i * channels + c] = all[src + c];
+        }
+
+        float peak = 0f;
+        for (int i = 0; i < clip.Length; i++) peak = Mathf.Max(peak, Mathf.Abs(clip[i]));
+        Debug.Log("[Voice] mic " + device + ", " + ring.frequency + " Hz, " + channels + " ch, " + count + " samples, peak " + peak.ToString("F3"));
+
         SetStatus("Transcribing...");
-        StartCoroutine(Transcribe(ToWav(data, clip.channels)));
+        yield return Transcribe(ToWav(clip, channels, ring.frequency));
     }
 
     private IEnumerator Transcribe(byte[] wav)
@@ -70,12 +129,12 @@ public class VoicePromptInput : MonoBehaviour
 
         using (UnityWebRequest req = UnityWebRequest.Post(sttUrl, form))
         {
-            req.timeout = 20;
+            req.timeout = 30;
             yield return req.SendWebRequest();
 
             if (req.result != UnityWebRequest.Result.Success)
             {
-                SetStatus("Speech service not reachable - is stt_service.py running? Type instead.");
+                SetStatus("Speech service error (" + req.responseCode + ") - is stt_service.py running? Type instead.");
                 yield break;
             }
 
@@ -94,7 +153,7 @@ public class VoicePromptInput : MonoBehaviour
 
     private void SetStatus(string s) { if (statusText != null) statusText.text = s; }
 
-    private static byte[] ToWav(float[] samples, int channels)
+    private static byte[] ToWav(float[] samples, int channels, int rate)
     {
         using (MemoryStream ms = new MemoryStream())
         using (BinaryWriter w = new BinaryWriter(ms))
@@ -103,7 +162,7 @@ public class VoicePromptInput : MonoBehaviour
             w.Write(new[] { 'R', 'I', 'F', 'F' }); w.Write(36 + dataLen);
             w.Write(new[] { 'W', 'A', 'V', 'E', 'f', 'm', 't', ' ' });
             w.Write(16); w.Write((short)1); w.Write((short)channels);
-            w.Write(SampleRate); w.Write(SampleRate * channels * 2);
+            w.Write(rate); w.Write(rate * channels * 2);
             w.Write((short)(channels * 2)); w.Write((short)16);
             w.Write(new[] { 'd', 'a', 't', 'a' }); w.Write(dataLen);
             foreach (float f in samples) w.Write((short)(Mathf.Clamp(f, -1f, 1f) * short.MaxValue));
