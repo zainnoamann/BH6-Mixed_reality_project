@@ -620,7 +620,10 @@ public class AddItemFlow : MonoBehaviour
         dragger.Begin(placed.transform, roomRootName);
         stage = Stage.Placing;
 
-        Say(resultStatusText, "Move the mouse to place it, click to drop. Q / E or scroll rotates. Then Accept.");
+        PointerSource pointer = PointerSource.Resolve();
+        Say(resultStatusText, pointer != null && pointer.UsingXr
+            ? "Point to place it, trigger to drop. A / X rotates. Then Accept."
+            : "Move the mouse to place it, click to drop. Q / E or scroll rotates. Then Accept.");
         Show(reviewPanel, true);
     }
 

@@ -1,13 +1,21 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.UI;
 using UnityEngine.XR;
 
 /// <summary>
 /// One place that answers "where is the user pointing" and "did they press select",
 /// whether the answer comes from a mouse or from a Quest controller.
 ///
-/// Put this on the same object as MouseObjectSelector. Drag the right hand controller
-/// from the XR Origin into Right Hand, and the headset camera into View Camera.
+/// Nothing has to be wired in the scene: Resolve() creates one if the scene has none,
+/// and it finds the "Right Controller" of the XR Origin by name.
+///
+/// Headset buttons:
+///   Trigger (right)  - select / place / confirm
+///   Grip (right)     - pick up the object you point at
+///   A (right)        - step up   (rotate right, or bigger while resizing)
+///   X (left)         - step down (rotate left, or smaller while resizing)
+///   B (right)        - cancel / deselect
 ///
 /// On desktop nothing changes: the ray comes from the mouse and select is left click.
 /// On the headset the ray comes out of the controller and select is the trigger.
@@ -32,6 +40,16 @@ public class PointerSource : MonoBehaviour
     private bool triggerLast;
     private bool gripNow;
     private bool gripLast;
+    private bool stepUpNow;
+    private bool stepUpLast;
+    private bool stepDownNow;
+    private bool stepDownLast;
+    private bool cancelNow;
+    private bool cancelLast;
+
+    private float nextSearchTime;
+    private int uiFrame = -1;
+    private bool uiResult;
 
     private void Awake()
     {
@@ -52,7 +70,20 @@ public class PointerSource : MonoBehaviour
             Instance = FindFirstObjectByType<PointerSource>();
         }
 
+        if (Instance == null)
+        {
+            // No one added it to the scene: make one, so desktop and VR scenes both work.
+            Instance = new GameObject("PointerSource").AddComponent<PointerSource>();
+        }
+
         return Instance;
+    }
+
+    private void Update()
+    {
+        // Read the buttons every frame, so "pressed this frame" is always correct
+        // even when nobody asked last frame.
+        Refresh();
     }
 
     /// <summary>True when a headset is connected and being worn.</summary>
@@ -65,7 +96,17 @@ public class PointerSource : MonoBehaviour
 
             UnityEngine.XR.InputDevice head = InputDevices.GetDeviceAtXRNode(XRNode.Head);
 
-            return head.isValid && rightHand != null;
+            if (!head.isValid)
+                return false;
+
+            if (rightHand == null && Time.unscaledTime >= nextSearchTime)
+            {
+                // The rig may have been enabled after Awake; look again, once a second.
+                nextSearchTime = Time.unscaledTime + 1f;
+                Configure(Camera.main);
+            }
+
+            return rightHand != null;
         }
     }
 
@@ -241,25 +282,90 @@ public class PointerSource : MonoBehaviour
         }
     }
 
-    /// <summary>Escape on desktop, the B button on the headset.</summary>
+    /// <summary>Escape on desktop, the B button on the headset (once per press).</summary>
     public bool CancelPressed
     {
         get
         {
-            if (UsingXr)
-            {
-                UnityEngine.XR.InputDevice hand =
-                    InputDevices.GetDeviceAtXRNode(XRNode.RightHand);
-                bool b = false;
+            Refresh();
 
-                return hand.isValid &&
-                       hand.TryGetFeatureValue(
-                           UnityEngine.XR.CommonUsages.secondaryButton, out b) && b;
-            }
-
-            return Keyboard.current != null &&
-                   Keyboard.current.escapeKey.wasPressedThisFrame;
+            return UsingXr
+                ? cancelNow && !cancelLast
+                : Keyboard.current != null &&
+                  Keyboard.current.escapeKey.wasPressedThisFrame;
         }
+    }
+
+    /// <summary>Headset only: A on the right controller. Rotate right / make bigger.</summary>
+    public bool StepUpPressed
+    {
+        get
+        {
+            Refresh();
+            return UsingXr && stepUpNow && !stepUpLast;
+        }
+    }
+
+    /// <summary>Headset only: X on the left controller. Rotate left / make smaller.</summary>
+    public bool StepDownPressed
+    {
+        get
+        {
+            Refresh();
+            return UsingXr && stepDownNow && !stepDownLast;
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // UI: is the controller ray on a menu or button?
+    // ------------------------------------------------------------------
+
+    /// <summary>
+    /// True when the controller ray points at a UI element of a world-space canvas.
+    /// EventSystem.IsPointerOverGameObject() only knows about the mouse, so in the
+    /// headset a trigger press on a button would also select the furniture behind it.
+    /// </summary>
+    public bool RayOverUi()
+    {
+        if (uiFrame == Time.frameCount)
+            return uiResult;
+
+        uiFrame = Time.frameCount;
+        uiResult = ComputeRayOverUi();
+        return uiResult;
+    }
+
+    private bool ComputeRayOverUi()
+    {
+        if (!TryGetRay(out Ray ray))
+            return false;
+
+        foreach (Canvas canvas in FindObjectsByType<Canvas>(FindObjectsSortMode.None))
+        {
+            if (!canvas.isRootCanvas || canvas.renderMode != RenderMode.WorldSpace)
+                continue;
+
+            Plane plane = new Plane(canvas.transform.forward, canvas.transform.position);
+
+            if (!plane.Raycast(ray, out float distance))
+                continue;
+
+            Vector3 world = ray.GetPoint(distance);
+
+            foreach (Graphic graphic in canvas.GetComponentsInChildren<Graphic>(false))
+            {
+                if (!graphic.raycastTarget || !graphic.isActiveAndEnabled)
+                    continue;
+
+                RectTransform rect = graphic.rectTransform;
+                Vector2 local = rect.InverseTransformPoint(world);
+
+                if (rect.rect.Contains(local))
+                    return true;
+            }
+        }
+
+        return false;
     }
 
     // ------------------------------------------------------------------
@@ -273,6 +379,15 @@ public class PointerSource : MonoBehaviour
 
         triggerLast = triggerNow;
         gripLast = gripNow;
+        stepUpLast = stepUpNow;
+        stepDownLast = stepDownNow;
+        cancelLast = cancelNow;
+
+        UnityEngine.XR.InputDevice left = InputDevices.GetDeviceAtXRNode(XRNode.LeftHand);
+        stepDownNow = left.isValid &&
+                      left.TryGetFeatureValue(
+                          UnityEngine.XR.CommonUsages.primaryButton, out bool xPressed) &&
+                      xPressed;
 
         UnityEngine.XR.InputDevice hand = InputDevices.GetDeviceAtXRNode(XRNode.RightHand);
 
@@ -280,8 +395,19 @@ public class PointerSource : MonoBehaviour
         {
             triggerNow = false;
             gripNow = false;
+            stepUpNow = false;
+            cancelNow = false;
             return;
         }
+
+        stepUpNow =
+            hand.TryGetFeatureValue(
+                UnityEngine.XR.CommonUsages.primaryButton, out bool aPressed) &&
+            aPressed;
+        cancelNow =
+            hand.TryGetFeatureValue(
+                UnityEngine.XR.CommonUsages.secondaryButton, out bool bPressed) &&
+            bPressed;
 
         bool triggerButton =
             hand.TryGetFeatureValue(
