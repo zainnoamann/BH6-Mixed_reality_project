@@ -59,6 +59,10 @@ public class PointerSource : MonoBehaviour
 
     [SerializeField] private float pointerLength = 8f;
 
+    [Tooltip("Hide XR Interaction Toolkit's own white ray on the right controller, so only " +
+             "this pointer shows. Turn on only if both rays land on the same spot.")]
+    [SerializeField] private bool hideToolkitRay;
+
     [Tooltip("How strongly hand shake is smoothed. Lower = steadier but slower to follow.")]
     [SerializeField] private float aimSmoothing = 18f;
 
@@ -69,6 +73,8 @@ public class PointerSource : MonoBehaviour
     private Vector3 aimPosition;
     private Vector3 aimDirection = Vector3.forward;
 
+    private float nextHideTime;
+    private float uiDistance;
     private LineRenderer pointerLine;
     private Transform pointerDot;
     private int uiFrame = -1;
@@ -166,12 +172,12 @@ public class PointerSource : MonoBehaviour
 
     /// <summary>
     /// A thin line from the controller with a dot where it lands, so it is clear what
-    /// the trigger will act on. Hidden on desktop, and while the ray is on the menu
-    /// (XR Interaction Toolkit draws its own ray there).
+    /// the trigger will act on. Hidden on desktop. Shown on the menu as well as in the
+    /// room, so the pointer never disappears when it moves onto a button.
     /// </summary>
     private void DrawPointer()
     {
-        bool show = showPointer && UsingXr && TryGetRay(out Ray ray) && !RayOverUi();
+        bool show = showPointer && UsingXr && TryGetRay(out Ray ray);
 
         if (!show)
         {
@@ -187,13 +193,29 @@ public class PointerSource : MonoBehaviour
 
         TryGetRay(out Ray aim);
 
-        Vector3 end = aim.origin + aim.direction * pointerLength;
-        bool hitSomething = Physics.Raycast(aim, out RaycastHit hit, pointerLength, ~0,
-                                            QueryTriggerInteraction.Ignore);
-
-        if (hitSomething)
+        if (hideToolkitRay)
         {
-            end = hit.point;
+            HideToolkitRay();
+        }
+
+        Vector3 end = aim.origin + aim.direction * pointerLength;
+        bool hitSomething;
+
+        if (RayOverUi())
+        {
+            // The menu is drawn on top of the room, so the pointer stops on the menu.
+            end = aim.origin + aim.direction * uiDistance;
+            hitSomething = true;
+        }
+        else
+        {
+            hitSomething = Physics.Raycast(aim, out RaycastHit hit, pointerLength, ~0,
+                                           QueryTriggerInteraction.Ignore);
+
+            if (hitSomething)
+            {
+                end = hit.point;
+            }
         }
 
         pointerLine.enabled = true;
@@ -206,6 +228,28 @@ public class PointerSource : MonoBehaviour
         // Keep the dot the same size to the eye, near or far.
         float distance = Vector3.Distance(aim.origin, end);
         pointerDot.localScale = Vector3.one * Mathf.Clamp(distance * 0.015f, 0.01f, 0.06f);
+    }
+
+    /// <summary>
+    /// Optional: switch off XR Interaction Toolkit's own line on the right controller,
+    /// so only this pointer is seen. Found by component name, so this file needs no
+    /// reference to the toolkit. Clicking the menu still works; only the drawing is hidden.
+    /// </summary>
+    private void HideToolkitRay()
+    {
+        if (rightHand == null || Time.unscaledTime < nextHideTime)
+            return;
+
+        nextHideTime = Time.unscaledTime + 1f;
+
+        foreach (Behaviour behaviour in rightHand.GetComponentsInChildren<Behaviour>(true))
+        {
+            if (behaviour != null && behaviour.GetType().Name == "CurveVisualController" &&
+                behaviour.gameObject.activeSelf)
+            {
+                behaviour.gameObject.SetActive(false);
+            }
+        }
     }
 
     private void BuildPointer()
@@ -521,7 +565,10 @@ public class PointerSource : MonoBehaviour
                 Vector2 local = rect.InverseTransformPoint(world);
 
                 if (rect.rect.Contains(local))
+                {
+                    uiDistance = distance;
                     return true;
+                }
             }
         }
 
