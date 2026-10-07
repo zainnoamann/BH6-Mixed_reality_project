@@ -1566,7 +1566,7 @@ Light:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 410087039}
-  m_Enabled: 1
+  m_Enabled: 0
   serializedVersion: 12
   m_Type: 1
   m_Color: {r: 1, g: 1, b: 1, a: 1}
@@ -3252,6 +3252,7 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 4294967295
   rayDistance: 100
+  roomRootName: Model
   uiController: {fileID: 967062139}
 --- !u!4 &841195239
 Transform:
@@ -3280,12 +3281,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7d0cb43cf94404ac4b5c9383c466ce5e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::FurnitureDragger
-  viewCamera: {fileID: 330585545}
   selector: {fileID: 841195238}
-  rotationStep: 15
-  rayDistance: 100
-  floorObject: {fileID: 0}
-  blockedColour: {r: 1, g: 0.3, b: 0.3, a: 1}
 --- !u!1 &879312876
 GameObject:
   m_ObjectHideFlags: 0
@@ -3842,6 +3838,7 @@ MonoBehaviour:
   pollSeconds: 1
   imageWaitSeconds: 2
   modelWaitSeconds: 6
+  placeholderFolder: Placeholders
   loadingPopup: {fileID: 0}
   imagePreviewPanel: {fileID: 0}
   reviewPanel: {fileID: 0}
