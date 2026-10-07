@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.XR;
 
 /// <summary>
 ///   W A S D  - walk, relative to where the camera is facing
@@ -19,6 +20,9 @@ public class PlayerMovement : MonoBehaviour
     [Tooltip("Movement follows this transform's facing. Assign the Main Camera.")]
     [SerializeField] private Transform cameraTransform;
 
+    [Header("XR")]
+    [SerializeField, Range(0f, 0.5f)] private float stickDeadzone = 0.15f;
+
     [Header("Gravity")]
     [Tooltip("Turn off if the floor has no collider and you keep falling through.")]
     [SerializeField] private bool useGravity = true;
@@ -26,11 +30,14 @@ public class PlayerMovement : MonoBehaviour
     [SerializeField] private float verticalSpeed = 2.0f;
 
     private CharacterController controller;
+    private AudioListener[] audioListeners;
     private float verticalVelocity;
 
     private void Awake()
     {
         controller = GetComponent<CharacterController>();
+        audioListeners = FindObjectsByType<AudioListener>(
+            FindObjectsInactive.Include, FindObjectsSortMode.None);
 
         if (cameraTransform == null && Camera.main != null)
         {
@@ -38,13 +45,68 @@ public class PlayerMovement : MonoBehaviour
         }
     }
 
-    private void Update()
+    private void LateUpdate()
     {
-        if (Keyboard.current == null)
+        if (audioListeners == null || audioListeners.Length < 2)
             return;
 
+        bool usingXr = XRSettings.isDeviceActive;
+        AudioListener selected = null;
+
+        foreach (AudioListener listener in audioListeners)
+        {
+            if (listener != null && listener.gameObject.activeInHierarchy &&
+                IsXrListener(listener) == usingXr)
+            {
+                selected = listener;
+                break;
+            }
+        }
+
+        if (selected == null)
+        {
+            foreach (AudioListener listener in audioListeners)
+            {
+                if (listener != null && listener.gameObject.activeInHierarchy)
+                {
+                    selected = listener;
+                    break;
+                }
+            }
+        }
+
+        if (selected == null)
+            return;
+
+        foreach (AudioListener listener in audioListeners)
+        {
+            if (listener != null && listener.enabled != (listener == selected))
+            {
+                listener.enabled = listener == selected;
+            }
+        }
+    }
+
+    private static bool IsXrListener(AudioListener listener)
+    {
+        for (Transform current = listener.transform; current != null; current = current.parent)
+        {
+            if (current.name.StartsWith("XR Origin", System.StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
+    }
+
+    private void Update()
+    {
+        UnityEngine.XR.InputDevice head = InputDevices.GetDeviceAtXRNode(XRNode.Head);
+        bool usingXr = XRSettings.isDeviceActive && head.isValid;
+        Vector2 moveInput;
+        float speed;
+
         // Typing a prompt must not walk the player across the room.
-        if (UiInput.KeyboardBlocked)
+        if (!usingXr && UiInput.KeyboardBlocked)
         {
             if (useGravity)
             {
@@ -54,29 +116,44 @@ public class PlayerMovement : MonoBehaviour
             return;
         }
 
-        Vector3 move = ReadDirection();
+        if (usingXr)
+        {
+            UnityEngine.XR.InputDevice leftHand =
+                InputDevices.GetDeviceAtXRNode(XRNode.LeftHand);
+            moveInput = leftHand.isValid &&
+                        leftHand.TryGetFeatureValue(
+                            UnityEngine.XR.CommonUsages.primary2DAxis, out Vector2 axis)
+                ? Vector2.ClampMagnitude(axis, 1f)
+                : Vector2.zero;
 
-        float speed = Keyboard.current.leftShiftKey.isPressed
-            ? sprintSpeed
-            : walkSpeed;
+            if (moveInput.sqrMagnitude < stickDeadzone * stickDeadzone)
+            {
+                moveInput = Vector2.zero;
+            }
 
-        Vector3 velocity = move * speed;
+            speed = walkSpeed;
+        }
+        else
+        {
+            Keyboard keyboard = Keyboard.current;
+            if (keyboard == null)
+                return;
+
+            moveInput = new Vector2(
+                (keyboard.dKey.isPressed ? 1f : 0f) - (keyboard.aKey.isPressed ? 1f : 0f),
+                (keyboard.wKey.isPressed ? 1f : 0f) - (keyboard.sKey.isPressed ? 1f : 0f));
+            speed = keyboard.leftShiftKey.isPressed ? sprintSpeed : walkSpeed;
+        }
+
+        Vector3 velocity = ReadDirection(moveInput) * speed;
         velocity.y = ReadVertical();
 
         controller.Move(velocity * Time.deltaTime);
     }
 
-    private Vector3 ReadDirection()
+    private Vector3 ReadDirection(Vector2 input)
     {
-        float x = 0f;
-        float z = 0f;
-
-        if (Keyboard.current.aKey.isPressed) x -= 1f;
-        if (Keyboard.current.dKey.isPressed) x += 1f;
-        if (Keyboard.current.sKey.isPressed) z -= 1f;
-        if (Keyboard.current.wKey.isPressed) z += 1f;
-
-        if (x == 0f && z == 0f)
+        if (input == Vector2.zero)
             return Vector3.zero;
 
         // Flatten the camera's facing so looking up or down does not
@@ -95,17 +172,21 @@ public class PlayerMovement : MonoBehaviour
         forward.Normalize();
         right.Normalize();
 
-        return Vector3.ClampMagnitude(forward * z + right * x, 1f);
+        return Vector3.ClampMagnitude(forward * input.y + right * input.x, 1f);
     }
 
     private float ReadVertical()
     {
         if (!useGravity)
         {
+            Keyboard keyboard = Keyboard.current;
+            if (keyboard == null)
+                return 0f;
+
             float v = 0f;
 
-            if (Keyboard.current.spaceKey.isPressed) v += verticalSpeed;
-            if (Keyboard.current.leftCtrlKey.isPressed) v -= verticalSpeed;
+            if (keyboard.spaceKey.isPressed) v += verticalSpeed;
+            if (keyboard.leftCtrlKey.isPressed) v -= verticalSpeed;
 
             return v;
         }

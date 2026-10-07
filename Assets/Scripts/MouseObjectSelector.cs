@@ -2,7 +2,9 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 
 /// <summary>
-/// Hover and select furniture with the mouse.
+/// Hover and select furniture with the mouse, or with the Quest controller ray.
+/// PointerSource decides which: mouse + left click on desktop, right controller +
+/// trigger in the headset (B deselects, grip picks up the object you point at).
 ///
 ///   Click an object      - select it (light blue tint + toolbar at the bottom)
 ///   Click empty space    - deselect
@@ -37,6 +39,7 @@ public class MouseObjectSelector : MonoBehaviour
     private PlacementDragger placer;
     private string resizeHint;
     private string rotateHint;
+    private PointerSource pointer;
 
     private void Start()
     {
@@ -61,25 +64,53 @@ public class MouseObjectSelector : MonoBehaviour
         placer.SizeChanged += ShowSize;
         placer.AngleChanged += ShowAngle;
 
-        Transform canvas = FindScreenCanvas();
+        pointer = PointerSource.Resolve();
+
+        Transform canvas = FindUiCanvas();
         if (canvas != null)
         {
+            // New look for the panels made in the scene (see UiTheme).
+            UiTheme.Apply(canvas);
+
+            VrKeyboard.Create(canvas);
+
+            // Headset: float the menu in front of the user, bigger, and inside the walls.
+            Canvas uiCanvas = canvas.GetComponent<Canvas>();
+            if (uiCanvas != null && uiCanvas.renderMode == RenderMode.WorldSpace &&
+                canvas.GetComponent<VrMenuPlacer>() == null)
+            {
+                canvas.gameObject.AddComponent<VrMenuPlacer>().roomRootName = roomRootName;
+
+                // Headset: stand on the room's floor at the real height.
+                if (FindFirstObjectByType<XrFloorAligner>() == null)
+                {
+                    gameObject.AddComponent<XrFloorAligner>().roomRootName = roomRootName;
+                }
+            }
             toolbar = SelectionToolbar.Create(canvas);
             toolbar.MoveClicked += MoveSelected;
             toolbar.ResizeClicked += ResizeSelected;
             toolbar.RotateClicked += RotateSelected;
+            toolbar.DeleteClicked += DeleteSelected;
             toolbar.TextureClicked += OpenTexturePanel;
             toolbar.CloseClicked += Deselect;
         }
         else
         {
-            Debug.LogWarning("MouseObjectSelector: no screen-space Canvas found; toolbar disabled.");
+            Debug.LogWarning("MouseObjectSelector: no Canvas found; toolbar disabled.");
         }
     }
 
     private void Update()
     {
-        if (Mouse.current == null || mainCamera == null)
+        if (pointer == null)
+        {
+            pointer = PointerSource.Resolve();
+        }
+
+        bool xr = pointer.UsingXr;
+
+        if (!xr && (Mouse.current == null || mainCamera == null))
             return;
 
         // While something is being placed, the mouse belongs to the placement.
@@ -90,8 +121,10 @@ public class MouseObjectSelector : MonoBehaviour
             return;
         }
 
-        if (Keyboard.current != null && !UiInput.KeyboardBlocked &&
-            Keyboard.current.escapeKey.wasPressedThisFrame)
+        // Escape on desktop, B on the headset.
+        if (xr ? pointer.CancelPressed
+               : Keyboard.current != null && !UiInput.KeyboardBlocked &&
+                 Keyboard.current.escapeKey.wasPressedThisFrame)
         {
             Deselect();
         }
@@ -113,6 +146,32 @@ public class MouseObjectSelector : MonoBehaviour
     public void MoveSelected()
     {
         StartMove(selectedObject);
+    }
+
+    /// <summary>Selects an object from code, for example a new item right after Accept.</summary>
+    public void SelectObject(ObjectInteraction target)
+    {
+        if (target == null || RoomShell.IsFixed(target.gameObject.name))
+            return;
+
+        Select(target);
+    }
+
+    /// <summary>Removes the selected object from the room (toolbar Delete button).</summary>
+    public void DeleteSelected()
+    {
+        ObjectInteraction target = selectedObject;
+
+        if (target == null || (placer != null && placer.IsActive))
+            return;
+
+        if (hoveredObject == target)
+        {
+            hoveredObject = null;
+        }
+
+        Deselect();
+        Destroy(target.gameObject);
     }
 
     /// <summary>Starts rotating the selected object in place (toolbar Rotate button).</summary>
@@ -217,15 +276,16 @@ public class MouseObjectSelector : MonoBehaviour
 
     private void HandleHover()
     {
+        bool xr = pointer.UsingXr;
+
         // Don't hover while rotating the camera
-        if (Mouse.current.rightButton.isPressed)
+        if (!xr && Mouse.current.rightButton.isPressed)
             return;
 
         ObjectInteraction interaction = null;
 
-        Ray ray = mainCamera.ScreenPointToRay(Mouse.current.position.ReadValue());
-
-        if (Physics.Raycast(ray, out RaycastHit hit, rayDistance, selectableLayer))
+        if (pointer.TryGetRay(out Ray ray) &&
+            Physics.Raycast(ray, out RaycastHit hit, rayDistance, selectableLayer))
         {
             interaction = hit.collider.GetComponentInParent<ObjectInteraction>();
 
@@ -254,12 +314,13 @@ public class MouseObjectSelector : MonoBehaviour
 
     private void HandleSelection()
     {
-        if (!Mouse.current.leftButton.wasPressedThisFrame)
+        if (!pointer.SelectPressed)
             return;
 
         // Alt + left drag orbits the camera; that is not a selection click.
         Keyboard keyboard = Keyboard.current;
-        if (keyboard != null && (keyboard.leftAltKey.isPressed || keyboard.rightAltKey.isPressed))
+        if (!pointer.UsingXr && keyboard != null &&
+            (keyboard.leftAltKey.isPressed || keyboard.rightAltKey.isPressed))
             return;
 
         if (hoveredObject == null)
@@ -324,8 +385,9 @@ public class MouseObjectSelector : MonoBehaviour
 
         if (started && toolbar != null)
         {
-            toolbar.ShowHint("Moving " + target.gameObject.name +
-                             ": click to place  |  Q / E or scroll to rotate  |  + / - to resize  |  Esc to cancel");
+            toolbar.ShowHint("Moving " + target.gameObject.name + ": " + Hint(
+                "click to place  |  Q / E or scroll to rotate  |  + / - to resize  |  Esc to cancel",
+                "trigger to place  |  X / Y to rotate  |  B to cancel"));
         }
     }
 
@@ -334,7 +396,9 @@ public class MouseObjectSelector : MonoBehaviour
         if (selectedObject == null || uiController == null)
             return;
 
-        Vector3 screenPosition = mainCamera.WorldToScreenPoint(selectedObject.transform.position);
+        Vector3 screenPosition = mainCamera != null
+            ? mainCamera.WorldToScreenPoint(selectedObject.transform.position)
+            : Vector3.zero;
         uiController.ShowObject(selectedObject.gameObject.name, screenPosition);
     }
 
@@ -344,8 +408,9 @@ public class MouseObjectSelector : MonoBehaviour
         if (resizeHint == null || toolbar == null)
             return;
 
-        toolbar.ShowHint(resizeHint + ": " + size +
-                         "  |  scroll or + / -  |  click to keep  |  Esc to cancel");
+        toolbar.ShowHint(resizeHint + ": " + size + "  |  " + Hint(
+            "scroll or + / -  |  click to keep  |  Esc to cancel",
+            "Y bigger, X smaller  |  trigger to keep  |  B to cancel"));
     }
 
     /// <summary>Live angle while rotating, e.g. "Turned +30 degrees".</summary>
@@ -354,28 +419,44 @@ public class MouseObjectSelector : MonoBehaviour
         if (rotateHint == null || toolbar == null)
             return;
 
-        toolbar.ShowHint(rotateHint + ": " + angle +
-                         "  |  scroll or Q / E (Shift = fine)  |  click to keep  |  Esc to cancel");
+        toolbar.ShowHint(rotateHint + ": " + angle + "  |  " + Hint(
+            "scroll or Q / E (Shift = fine)  |  click to keep  |  Esc to cancel",
+            "Y right, X left  |  trigger to keep  |  B to cancel"));
     }
 
     // ------------------------------------------------------------------ helpers
 
-    private Transform FindScreenCanvas()
+    /// <summary>Desktop or headset wording for the toolbar hints.</summary>
+    private string Hint(string desktop, string headset)
+    {
+        return pointer != null && pointer.UsingXr ? headset : desktop;
+    }
+
+    /// <summary>
+    /// The canvas that holds the app's panels. A screen canvas on desktop, the
+    /// world-space canvas in the headset; the toolbar works on both.
+    /// </summary>
+    private Transform FindUiCanvas()
     {
         Canvas fromPanel = uiController != null ? uiController.GetComponentInParent<Canvas>() : null;
-        if (fromPanel != null && fromPanel.rootCanvas.renderMode != RenderMode.WorldSpace)
+        if (fromPanel != null)
         {
             return fromPanel.rootCanvas.transform;
         }
 
+        Canvas worldCanvas = null;
+
         foreach (Canvas canvas in FindObjectsByType<Canvas>(FindObjectsSortMode.None))
         {
-            if (canvas.isRootCanvas && canvas.renderMode != RenderMode.WorldSpace)
-            {
+            if (!canvas.isRootCanvas)
+                continue;
+
+            if (canvas.renderMode != RenderMode.WorldSpace)
                 return canvas.transform;
-            }
+
+            worldCanvas = canvas;
         }
 
-        return null;
+        return worldCanvas != null ? worldCanvas.transform : null;
     }
 }

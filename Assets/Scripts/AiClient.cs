@@ -50,6 +50,7 @@ public class AiClient : MonoBehaviour
         public float progress;
         public string message;
         public float elapsedSeconds;
+        public float etaSeconds = -1f;   // seconds left, or -1 when the server cannot tell yet
         public string imageUrl;
         public string modelUrl;
         public bool textured;
