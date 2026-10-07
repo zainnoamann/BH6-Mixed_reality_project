@@ -778,7 +778,7 @@ public class AddItemFlow : MonoBehaviour
 
         if (loadingFill != null)
         {
-            loadingFill.fillAmount = 0f;
+            SetBar(0f);
         }
 
         Show(loadingPopup, true);
@@ -816,7 +816,32 @@ public class AddItemFlow : MonoBehaviour
         }
 
         float blend = 1f - Mathf.Exp(-3f * Time.unscaledDeltaTime);
-        loadingFill.fillAmount = Mathf.Lerp(loadingFill.fillAmount, progressTarget, blend);
+        SetBar(Mathf.Lerp(barValue, progressTarget, blend));
+    }
+
+    private float barValue;
+
+    /// <summary>
+    /// Sets how full the loading bar is, from 0 to 1. The blue image is made narrower
+    /// or wider by moving its right edge. This works for every kind of image; the old
+    /// way ("fill amount") only works on some, and the bar then stayed full.
+    /// </summary>
+    private void SetBar(float value)
+    {
+        barValue = Mathf.Clamp01(value);
+
+        if (loadingFill == null)
+        {
+            return;
+        }
+
+        loadingFill.fillAmount = 1f;
+
+        RectTransform rect = loadingFill.rectTransform;
+        rect.anchorMin = new Vector2(0f, 0f);
+        rect.anchorMax = new Vector2(barValue, 1f);
+        rect.offsetMin = Vector2.zero;
+        rect.offsetMax = Vector2.zero;
     }
 
     /// <summary>"45s" or "2 min 10s".</summary>
@@ -838,7 +863,7 @@ public class AddItemFlow : MonoBehaviour
 
             if (loadingFill != null)
             {
-                loadingFill.fillAmount = t;
+                SetBar(t);
             }
 
             int index = Mathf.Min(stages.Length - 1, Mathf.FloorToInt(t * stages.Length));
