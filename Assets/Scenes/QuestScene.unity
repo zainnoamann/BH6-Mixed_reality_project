@@ -3181,18 +3181,6 @@ PrefabInstance:
     m_TransformParent: {fileID: 0}
     m_Modifications:
     - target: {fileID: -8679921383154817045, guid: bd7dd6fb39cb07e4e864d35b055ea704, type: 3}
-      propertyPath: m_LocalPosition.x
-      value: -0.62704
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: bd7dd6fb39cb07e4e864d35b055ea704, type: 3}
-      propertyPath: m_LocalPosition.y
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: bd7dd6fb39cb07e4e864d35b055ea704, type: 3}
-      propertyPath: m_LocalPosition.z
-      value: 6.56725
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: bd7dd6fb39cb07e4e864d35b055ea704, type: 3}
       propertyPath: m_LocalScale.x
       value: 2.5
       objectReference: {fileID: 0}
@@ -3203,6 +3191,18 @@ PrefabInstance:
     - target: {fileID: -8679921383154817045, guid: bd7dd6fb39cb07e4e864d35b055ea704, type: 3}
       propertyPath: m_LocalScale.z
       value: 2.5
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: bd7dd6fb39cb07e4e864d35b055ea704, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: -0.62704
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: bd7dd6fb39cb07e4e864d35b055ea704, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: bd7dd6fb39cb07e4e864d35b055ea704, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 6.56725
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: bd7dd6fb39cb07e4e864d35b055ea704, type: 3}
       propertyPath: m_LocalRotation.w
@@ -5285,9 +5285,9 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 1, y: 1}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: -14, y: -12}
+  m_AnchoredPosition: {x: -31.000008, y: -40}
   m_SizeDelta: {x: 34, y: 34}
-  m_Pivot: {x: 1, y: 1}
+  m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1481305588
 MonoBehaviour:
   m_ObjectHideFlags: 0
