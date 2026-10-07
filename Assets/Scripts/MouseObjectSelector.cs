@@ -69,6 +69,9 @@ public class MouseObjectSelector : MonoBehaviour
         Transform canvas = FindUiCanvas();
         if (canvas != null)
         {
+            // New look for the panels made in the scene (see UiTheme).
+            UiTheme.Apply(canvas);
+
             VrKeyboard.Create(canvas);
 
             // Headset: float the menu in front of the user, bigger, and inside the walls.

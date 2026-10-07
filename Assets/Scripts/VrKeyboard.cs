@@ -22,10 +22,6 @@ public class VrKeyboard : MonoBehaviour
 
     private static readonly string[] Rows = { "qwertyuiop", "asdfghjkl", "zxcvbnm" };
 
-    private static readonly Color PanelColour = new Color(0.10f, 0.10f, 0.12f, 0.96f);
-    private static readonly Color KeyColour = new Color(0.28f, 0.28f, 0.32f, 1f);
-    private static readonly Color ActionColour = new Color(0.13f, 0.45f, 0.13f, 1f);
-
     private const float KeySize = 46f;
     private const float KeyGap = 5f;
 
@@ -64,10 +60,10 @@ public class VrKeyboard : MonoBehaviour
         rect.anchoredPosition = Vector2.zero;
 
         Image background = panel.AddComponent<Image>();
-        background.color = PanelColour;
+        UiTheme.StylePanel(background);
 
         VerticalLayoutGroup layout = panel.AddComponent<VerticalLayoutGroup>();
-        layout.padding = new RectOffset(10, 10, 10, 10);
+        layout.padding = new RectOffset(14, 14, 14, 14);
         layout.spacing = KeyGap;
         layout.childAlignment = TextAnchor.MiddleCenter;
         layout.childControlWidth = true;
@@ -86,15 +82,15 @@ public class VrKeyboard : MonoBehaviour
             foreach (char letter in letters)
             {
                 string text = letter.ToString();
-                CreateKey(row, text.ToUpperInvariant(), KeySize, KeyColour, () => Type(text));
+                CreateKey(row, text.ToUpperInvariant(), KeySize, UiTheme.Role.Key, () => Type(text));
             }
         }
 
         Transform actions = CreateRow();
-        CreateKey(actions, "Clear", KeySize * 1.8f, KeyColour, Clear);
-        CreateKey(actions, "Space", KeySize * 4.5f, KeyColour, () => Type(" "));
-        CreateKey(actions, "Backspace", KeySize * 2.4f, KeyColour, Backspace);
-        CreateKey(actions, "Done", KeySize * 1.8f, ActionColour, Done);
+        CreateKey(actions, "Clear", KeySize * 1.8f, UiTheme.Role.Neutral, Clear);
+        CreateKey(actions, "Space", KeySize * 4.5f, UiTheme.Role.Key, () => Type(" "));
+        CreateKey(actions, "Backspace", KeySize * 2.4f, UiTheme.Role.Neutral, Backspace);
+        CreateKey(actions, "Done", KeySize * 1.8f, UiTheme.Role.Accent, Done);
 
         panel.SetActive(false);
     }
@@ -190,17 +186,17 @@ public class VrKeyboard : MonoBehaviour
         return row.transform;
     }
 
-    private static void CreateKey(Transform row, string caption, float width, Color colour,
+    private static void CreateKey(Transform row, string caption, float width, UiTheme.Role role,
                                   UnityEngine.Events.UnityAction onClick)
     {
         GameObject key = new GameObject(caption + "Key", typeof(RectTransform));
         key.transform.SetParent(row, false);
 
         Image image = key.AddComponent<Image>();
-        image.color = colour;
 
         Button button = key.AddComponent<Button>();
         button.targetGraphic = image;
+        UiTheme.StyleButton(button, role);
         button.onClick.AddListener(onClick);
 
         LayoutElement layout = key.AddComponent<LayoutElement>();
@@ -221,7 +217,7 @@ public class VrKeyboard : MonoBehaviour
         TextMeshProUGUI text = label.AddComponent<TextMeshProUGUI>();
         text.text = caption;
         text.fontSize = caption.Length == 1 ? 22f : 17f;
-        text.color = Color.white;
+        text.color = UiTheme.Text;
         text.alignment = TextAlignmentOptions.Center;
         text.raycastTarget = false;
         text.textWrappingMode = TextWrappingModes.NoWrap;

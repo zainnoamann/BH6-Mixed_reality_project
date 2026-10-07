@@ -31,10 +31,6 @@ public class SelectionToolbar : MonoBehaviour
     private GameObject deleteButton;
     private GameObject textureButton;
 
-    private static readonly Color PanelColour = new Color(0.12f, 0.12f, 0.14f, 0.92f);
-    private static readonly Color ButtonColour = new Color(0.13f, 0.55f, 0.13f, 1f);
-    private static readonly Color CloseColour = new Color(0.35f, 0.35f, 0.38f, 1f);
-    private static readonly Color DeleteColour = new Color(0.65f, 0.15f, 0.15f, 1f);
 
     public bool IsVisible => panel != null && panel.activeSelf;
 
@@ -62,11 +58,11 @@ public class SelectionToolbar : MonoBehaviour
         rect.anchoredPosition = new Vector2(0f, 24f);
 
         Image background = panel.AddComponent<Image>();
-        background.color = PanelColour;
+        UiTheme.StylePanel(background);
 
         HorizontalLayoutGroup layout = panel.AddComponent<HorizontalLayoutGroup>();
-        layout.padding = new RectOffset(12, 12, 8, 8);
-        layout.spacing = 8f;
+        layout.padding = new RectOffset(18, 14, 10, 10);
+        layout.spacing = 10f;
         layout.childAlignment = TextAnchor.MiddleCenter;
         layout.childControlWidth = true;
         layout.childControlHeight = true;
@@ -82,12 +78,12 @@ public class SelectionToolbar : MonoBehaviour
         // No fixed width: the label grows with its text, so long hints are not cut off.
         labelLayout.minWidth = 180f;
 
-        moveButton = CreateButton("Move", ButtonColour, () => MoveClicked?.Invoke());
-        rotateButton = CreateButton("Rotate", ButtonColour, () => RotateClicked?.Invoke());
-        resizeButton = CreateButton("Resize", ButtonColour, () => ResizeClicked?.Invoke());
-        textureButton = CreateButton("Change Texture", ButtonColour, () => TextureClicked?.Invoke());
-        deleteButton = CreateButton("Delete", DeleteColour, () => DeleteClicked?.Invoke());
-        CreateButton("Close", CloseColour, () => CloseClicked?.Invoke());
+        moveButton = CreateButton("Move", UiTheme.Role.Accent, () => MoveClicked?.Invoke());
+        rotateButton = CreateButton("Rotate", UiTheme.Role.Accent, () => RotateClicked?.Invoke());
+        resizeButton = CreateButton("Resize", UiTheme.Role.Accent, () => ResizeClicked?.Invoke());
+        textureButton = CreateButton("Change Texture", UiTheme.Role.Accent, () => TextureClicked?.Invoke());
+        deleteButton = CreateButton("Delete", UiTheme.Role.Danger, () => DeleteClicked?.Invoke());
+        CreateButton("Close", UiTheme.Role.Neutral, () => CloseClicked?.Invoke());
     }
 
     /// <summary>Normal state: object name plus all actions.</summary>
@@ -124,22 +120,22 @@ public class SelectionToolbar : MonoBehaviour
         }
     }
 
-    private GameObject CreateButton(string text, Color colour, Action onClick)
+    private GameObject CreateButton(string text, UiTheme.Role role, Action onClick)
     {
         GameObject go = new GameObject(text + "Button", typeof(RectTransform));
         go.transform.SetParent(panel.transform, false);
 
         Image image = go.AddComponent<Image>();
-        image.color = colour;
 
         Button button = go.AddComponent<Button>();
         button.targetGraphic = image;
+        UiTheme.StyleButton(button, role);
         button.onClick.AddListener(() => onClick());
 
         LayoutElement layout = go.AddComponent<LayoutElement>();
         layout.minWidth = 110f;
-        layout.minHeight = 38f;
-        layout.preferredHeight = 38f;
+        layout.minHeight = 42f;
+        layout.preferredHeight = 42f;
 
         TMP_Text caption = CreateText(go.transform, "Text", text, 17f, TextAlignmentOptions.Center);
         RectTransform captionRect = caption.rectTransform;
@@ -163,7 +159,7 @@ public class SelectionToolbar : MonoBehaviour
         TextMeshProUGUI tmp = go.AddComponent<TextMeshProUGUI>();
         tmp.text = text;
         tmp.fontSize = size;
-        tmp.color = Color.white;
+        tmp.color = UiTheme.Text;
         tmp.alignment = alignment;
         tmp.raycastTarget = false;
         tmp.textWrappingMode = TextWrappingModes.NoWrap;
