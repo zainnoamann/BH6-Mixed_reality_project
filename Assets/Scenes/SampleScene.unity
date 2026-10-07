@@ -1271,8 +1271,6 @@ MonoBehaviour:
   minPitch: -85
   maxPitch: 85
   lockCursorWhileLooking: 1
-  snapTurnAngle: 45
-  snapTurnThreshold: 0.7
   body: {fileID: 0}
 --- !u!1 &334800539
 GameObject:
@@ -1556,6 +1554,34 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 0}
     m_Modifications:
+    - target: {fileID: 1670256625, guid: f6336ac4ac8b4d34bc5072418cdc62a0, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: -0.06909537
+      objectReference: {fileID: 0}
+    - target: {fileID: 1670256625, guid: f6336ac4ac8b4d34bc5072418cdc62a0, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: -0.07075834
+      objectReference: {fileID: 0}
+    - target: {fileID: 1670256625, guid: f6336ac4ac8b4d34bc5072418cdc62a0, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 0.20992374
+      objectReference: {fileID: 0}
+    - target: {fileID: 1670256625, guid: f6336ac4ac8b4d34bc5072418cdc62a0, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: -0.28862438
+      objectReference: {fileID: 0}
+    - target: {fileID: 1670256625, guid: f6336ac4ac8b4d34bc5072418cdc62a0, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0.002427192
+      objectReference: {fileID: 0}
+    - target: {fileID: 1670256625, guid: f6336ac4ac8b4d34bc5072418cdc62a0, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0.95740557
+      objectReference: {fileID: 0}
+    - target: {fileID: 1670256625, guid: f6336ac4ac8b4d34bc5072418cdc62a0, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0.008041468
+      objectReference: {fileID: 0}
     - target: {fileID: 1767192434, guid: f6336ac4ac8b4d34bc5072418cdc62a0, type: 3}
       propertyPath: m_LocalPosition.x
       value: -0.39827657
@@ -1579,6 +1605,34 @@ PrefabInstance:
     - target: {fileID: 658028464602686504, guid: f6336ac4ac8b4d34bc5072418cdc62a0, type: 3}
       propertyPath: m_Enabled
       value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 716906830792148215, guid: f6336ac4ac8b4d34bc5072418cdc62a0, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 1.217665
+      objectReference: {fileID: 0}
+    - target: {fileID: 716906830792148215, guid: f6336ac4ac8b4d34bc5072418cdc62a0, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: -0.037015438
+      objectReference: {fileID: 0}
+    - target: {fileID: 716906830792148215, guid: f6336ac4ac8b4d34bc5072418cdc62a0, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 1.8360376
+      objectReference: {fileID: 0}
+    - target: {fileID: 716906830792148215, guid: f6336ac4ac8b4d34bc5072418cdc62a0, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: -0.28862438
+      objectReference: {fileID: 0}
+    - target: {fileID: 716906830792148215, guid: f6336ac4ac8b4d34bc5072418cdc62a0, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0.002427192
+      objectReference: {fileID: 0}
+    - target: {fileID: 716906830792148215, guid: f6336ac4ac8b4d34bc5072418cdc62a0, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0.95740557
+      objectReference: {fileID: 0}
+    - target: {fileID: 716906830792148215, guid: f6336ac4ac8b4d34bc5072418cdc62a0, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0.008041468
       objectReference: {fileID: 0}
     - target: {fileID: 1316853283282549446, guid: f6336ac4ac8b4d34bc5072418cdc62a0, type: 3}
       propertyPath: m_IsActive
@@ -3393,9 +3447,8 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 4294967295
   rayDistance: 100
+  roomRootName: Model
   uiController: {fileID: 967062139}
-  pointer: {fileID: 0}
-  aimLine: {fileID: 0}
 --- !u!4 &841195239
 Transform:
   m_ObjectHideFlags: 0
@@ -3423,13 +3476,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7d0cb43cf94404ac4b5c9383c466ce5e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::FurnitureDragger
-  viewCamera: {fileID: 330585545}
   selector: {fileID: 841195238}
-  pointer: {fileID: 0}
-  rotationStep: 15
-  rayDistance: 100
-  floorObject: {fileID: 0}
-  blockedColour: {r: 1, g: 0.3, b: 0.3, a: 1}
 --- !u!1 &879312876
 GameObject:
   m_ObjectHideFlags: 0
@@ -3986,6 +4033,7 @@ MonoBehaviour:
   pollSeconds: 1
   imageWaitSeconds: 2
   modelWaitSeconds: 6
+  placeholderFolder: Placeholders
   loadingPopup: {fileID: 0}
   imagePreviewPanel: {fileID: 0}
   reviewPanel: {fileID: 0}
@@ -6839,12 +6887,11 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CameraController
   rotationSpeed: 0.12
+  keyboardTurnSpeed: 90
   maxDeltaPerFrame: 80
   minPitch: -85
   maxPitch: 85
   lockCursorWhileLooking: 1
-  snapTurnAngle: 45
-  snapTurnThreshold: 0.7
   body: {fileID: 0}
 --- !u!114 &1820834026
 MonoBehaviour:

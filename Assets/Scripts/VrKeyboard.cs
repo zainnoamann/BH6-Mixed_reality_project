@@ -39,7 +39,8 @@ public class VrKeyboard : MonoBehaviour
         rootRect.anchorMin = new Vector2(0.5f, 0f);
         rootRect.anchorMax = new Vector2(0.5f, 0f);
         rootRect.pivot = new Vector2(0.5f, 0f);
-        rootRect.anchoredPosition = new Vector2(0f, 16f);
+        // Below the bottom edge of the menu, so it does not cover the Generate button.
+        rootRect.anchoredPosition = new Vector2(0f, -110f);
         rootRect.sizeDelta = Vector2.zero;
 
         VrKeyboard keyboard = root.AddComponent<VrKeyboard>();
