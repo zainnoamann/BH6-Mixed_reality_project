@@ -80,6 +80,12 @@ public class MouseObjectSelector : MonoBehaviour
                 canvas.GetComponent<VrMenuPlacer>() == null)
             {
                 canvas.gameObject.AddComponent<VrMenuPlacer>().roomRootName = roomRootName;
+
+                // Headset: stand on the room's floor at the real height.
+                if (FindFirstObjectByType<XrFloorAligner>() == null)
+                {
+                    gameObject.AddComponent<XrFloorAligner>().roomRootName = roomRootName;
+                }
             }
             toolbar = SelectionToolbar.Create(canvas);
             toolbar.MoveClicked += MoveSelected;
