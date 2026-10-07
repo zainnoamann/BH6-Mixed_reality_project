@@ -282,11 +282,16 @@ public static class HouseMaterialBuilder
     // ------------------------------------------------------------------ reflections
 
     // Floors in the model's own coordinates (metres): x and z cover the house, y each storey.
-    private static readonly (string name, float bottom, float top)[] Storeys =
+    internal static readonly (string name, float bottom, float top)[] Storeys =
     {
         ("Ground floor", 3.05f, 5.75f),
         ("Upper floor", 6.05f, 8.75f),
     };
+
+    // Model x is mirrored on import (Unity is left-handed), so the house spans
+    // x -23.3 .. -9.8 in the model's space.
+    internal static readonly Vector3 HouseMin = new Vector3(-23.3f, 0f, -26.5f);
+    internal static readonly Vector3 HouseMax = new Vector3(-9.8f, 0f, -7.0f);
 
     [MenuItem("Tools/House/Add Reflection Probes")]
     public static void AddReflectionProbes()
@@ -306,10 +311,8 @@ public static class HouseMaterialBuilder
         GameObject group = new GameObject(groupName);
         Undo.RegisterCreatedObjectUndo(group, "Add house reflection probes");
 
-        // Model x is mirrored on import (Unity is left-handed), so the house spans
-        // x -23.3 .. -9.8 in the model's space.
-        Vector3 min = new Vector3(-23.3f, 0f, -26.5f);
-        Vector3 max = new Vector3(-9.8f, 0f, -7.0f);
+        Vector3 min = HouseMin;
+        Vector3 max = HouseMax;
 
         var probes = new List<ReflectionProbe>();
         foreach (var storey in Storeys)
@@ -352,7 +355,7 @@ public static class HouseMaterialBuilder
         Debug.Log("House probes: added and baked one reflection probe per floor. Save the scene.");
     }
 
-    private static GameObject FindModelInstance()
+    internal static GameObject FindModelInstance()
     {
         Object modelAsset = AssetDatabase.LoadMainAssetAtPath(ModelPath);
         foreach (GameObject root in UnityEngine.SceneManagement.SceneManager.GetActiveScene().GetRootGameObjects())
