@@ -774,6 +774,8 @@ public class AddItemFlow : MonoBehaviour
         Show(reviewPanel, false);
         Say(loadingText, title);
 
+        progressTarget = -1f; // stop sliding until the server reports again
+
         if (loadingFill != null)
         {
             loadingFill.fillAmount = 0f;
@@ -789,12 +791,39 @@ public class AddItemFlow : MonoBehaviour
             return;
         }
 
-        if (loadingFill != null)
+        // The server is asked once a second. Update() slides the bar to the new value,
+        // so it moves smoothly instead of in small jumps.
+        progressTarget = Mathf.Clamp01(job.progress);
+
+        if (job.etaSeconds >= 0f)
         {
-            loadingFill.fillAmount = Mathf.Clamp01(job.progress);
+            Say(loadingText, string.Format("{0}   {1:0}s, about {2} left",
+                                           job.stage, job.elapsedSeconds, Friendly(job.etaSeconds)));
+        }
+        else
+        {
+            Say(loadingText, string.Format("{0}   {1:0}s", job.stage, job.elapsedSeconds));
+        }
+    }
+
+    private float progressTarget = -1f;
+
+    private void Update()
+    {
+        if (progressTarget < 0f || loadingFill == null)
+        {
+            return;
         }
 
-        Say(loadingText, string.Format("{0}   {1:0}s", job.stage, job.elapsedSeconds));
+        float blend = 1f - Mathf.Exp(-3f * Time.unscaledDeltaTime);
+        loadingFill.fillAmount = Mathf.Lerp(loadingFill.fillAmount, progressTarget, blend);
+    }
+
+    /// <summary>"45s" or "2 min 10s".</summary>
+    private static string Friendly(float seconds)
+    {
+        int whole = Mathf.CeilToInt(seconds);
+        return whole < 60 ? whole + "s" : string.Format("{0} min {1}s", whole / 60, whole % 60);
     }
 
     private IEnumerator Simulate(float seconds, string[] stages)

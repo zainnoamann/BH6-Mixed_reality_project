@@ -205,8 +205,14 @@ public static class UiTheme
             }
             else if (name == "fill")
             {
-                image.sprite = Pill;
-                image.type = Image.Type.Sliced;
+                // The loading bar grows with "fill amount", which only works on a
+                // Filled image. Keep that type; only round it when it is not Filled.
+                if (image.type != Image.Type.Filled)
+                {
+                    image.sprite = Pill;
+                    image.type = Image.Type.Sliced;
+                }
+
                 image.color = AccentBright;
             }
             else if (name == "background" || name == "loadingbar")
