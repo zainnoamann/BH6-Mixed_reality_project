@@ -1,5 +1,6 @@
 /// <summary>
-/// The parts of the room that are not furniture: walls, floor, ceiling, windows, doors.
+/// The parts of the room that are not furniture: walls, floor, ceiling, windows, doors,
+/// railings.
 ///
 /// They are locked: they cannot be selected, moved, or block a placement.
 /// Matching is by name, the same rule FurnitureDragger used before, so it keeps
@@ -9,7 +10,7 @@ public static class RoomShell
 {
     private static readonly string[] FixedParts =
     {
-        "wall", "floor", "ceiling", "window", "door", "roof"
+        "wall", "floor", "ceiling", "window", "door", "roof", "railing"
     };
 
     public static bool IsFixed(string objectName)

@@ -225,7 +225,7 @@ public class MouseObjectSelector : MonoBehaviour
 
         Ray ray = mainCamera.ScreenPointToRay(Mouse.current.position.ReadValue());
 
-        if (Physics.Raycast(ray, out RaycastHit hit, rayDistance, selectableLayer))
+        if (RaycastClickable(ray, out RaycastHit hit))
         {
             interaction = hit.collider.GetComponentInParent<ObjectInteraction>();
 
@@ -250,6 +250,74 @@ public class MouseObjectSelector : MonoBehaviour
         {
             hoveredObject.SetHover(true);
         }
+    }
+
+    /// <summary>
+    /// First thing under the ray that a click should land on. Glass in the room shell
+    /// (windows, glass railings, the stair balustrade) is see-through, so the ray carries on
+    /// to whatever is visible behind it; a solid wall still stops it. Glass on furniture,
+    /// such as a glass table top, stays clickable.
+    /// </summary>
+    private bool RaycastClickable(Ray ray, out RaycastHit result)
+    {
+        RaycastHit[] hits = Physics.RaycastAll(ray, rayDistance, selectableLayer, QueryTriggerInteraction.Ignore);
+        System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
+
+        foreach (RaycastHit hit in hits)
+        {
+            ObjectInteraction owner = hit.collider.GetComponentInParent<ObjectInteraction>();
+
+            if (owner != null && RoomShell.IsFixed(owner.gameObject.name) && IsSeeThrough(hit))
+                continue;
+
+            result = hit;
+            return true;
+        }
+
+        result = default;
+        return false;
+    }
+
+    private static bool IsSeeThrough(RaycastHit hit)
+    {
+        MeshFilter filter = hit.collider.GetComponent<MeshFilter>();
+        Renderer renderer = hit.collider.GetComponent<Renderer>();
+
+        if (filter == null || filter.sharedMesh == null || renderer == null || hit.triangleIndex < 0)
+            return false;
+
+        // Both colliders InteractionSetup adds list their triangles in sub-mesh order, so the
+        // hit triangle's sub-mesh, and with it its material, can be found by counting.
+        Mesh mesh = filter.sharedMesh;
+        Material[] materials = renderer.sharedMaterials;
+        int first = 0;
+
+        for (int i = 0; i < mesh.subMeshCount && i < materials.Length; i++)
+        {
+            int count = (int)mesh.GetSubMesh(i).indexCount / 3;
+
+            if (hit.triangleIndex < first + count)
+                return IsTransparent(materials[i]);
+
+            first += count;
+        }
+
+        return false;
+    }
+
+    private static bool IsTransparent(Material material)
+    {
+        if (material == null)
+            return false;
+
+        if (material.renderQueue >= (int)UnityEngine.Rendering.RenderQueue.Transparent)
+            return true;
+
+        Color colour = material.HasProperty("_BaseColor") ? material.GetColor("_BaseColor")
+                     : material.HasProperty("_Color") ? material.color
+                     : Color.white;
+
+        return colour.a < 0.99f;
     }
 
     private void HandleSelection()
