@@ -12,6 +12,9 @@ using UnityEngine.InputSystem;
 ///   + / -          - resize (grows from its base, so it stays standing on its surface)
 ///   Escape         - cancel
 ///
+/// In the headset (PointerSource): the object follows the right controller ray,
+/// trigger places it, X / Y rotate (or resize in Resize mode), B cancels.
+///
 /// Preview: green = the spot is free, red = it overlaps other furniture.
 ///
 /// Used for both:
@@ -276,6 +279,14 @@ public class PlacementDragger : MonoBehaviour
             return;
         }
 
+        PointerSource pointer = PointerSource.Resolve();
+
+        if (pointer != null && pointer.UsingXr)
+        {
+            UpdateXr(pointer);
+            return;
+        }
+
         Keyboard keyboard = Keyboard.current;
         Mouse mouse = Mouse.current;
 
@@ -370,6 +381,89 @@ public class PlacementDragger : MonoBehaviour
         {
             IsFollowing = true;
             lastMouse = mouse.position.ReadValue();
+            UpdatePreview();
+        }
+    }
+
+    /// <summary>
+    /// Headset version of the three modes. Same rules as the mouse: the ray moves the
+    /// object, trigger confirms (refused while red), B cancels, X / Y step.
+    /// </summary>
+    private void UpdateXr(PointerSource pointer)
+    {
+        if (pointer.CancelPressed)
+        {
+            if (mode != Mode.NewItem)
+            {
+                Cancel();
+                return;
+            }
+
+            // New item: just let go of it. Accept / Undo are still on the panel.
+            StopFollowing();
+        }
+
+        float step = pointer.StepUpPressed ? 1f : pointer.StepDownPressed ? -1f : 0f;
+
+        if (step != 0f)
+        {
+            if (mode == Mode.Resize)
+            {
+                Resize(step);
+            }
+            else if (mode == Mode.Rotate || IsFollowing)
+            {
+                Rotate(step);
+            }
+        }
+
+        bool overUi = UiInput.PointerOverUI;
+        bool hasRay = pointer.TryGetRay(out Ray ray);
+
+        if (IsFollowing && hasRay && !overUi && TrySurfacePoint(ray, out Vector3 point))
+        {
+            MoveBaseTo(point);
+            UpdatePreview();
+        }
+
+        if (!pointer.SelectPressed || overUi)
+        {
+            return;
+        }
+
+        if (mode == Mode.Resize || mode == Mode.Rotate)
+        {
+            if (!Blocked)
+            {
+                End(true);
+            }
+
+            return;
+        }
+
+        if (IsFollowing)
+        {
+            if (Blocked)
+            {
+                return; // red: refuse the drop, keep following
+            }
+
+            if (mode == Mode.ExistingObject)
+            {
+                End(true);
+            }
+            else
+            {
+                StopFollowing();
+            }
+
+            return;
+        }
+
+        // New item already dropped: pointing at it and pulling the trigger picks it up again.
+        if (mode == Mode.NewItem && hasRay && RayOnTarget(ray))
+        {
+            IsFollowing = true;
             UpdatePreview();
         }
     }
@@ -564,9 +658,13 @@ public class PlacementDragger : MonoBehaviour
     /// </summary>
     private bool TrySurfacePoint(Vector2 screen, out Vector3 point)
     {
+        return TrySurfacePoint(viewCamera.ScreenPointToRay(screen), out point);
+    }
+
+    private bool TrySurfacePoint(Ray ray, out Vector3 point)
+    {
         point = default;
 
-        Ray ray = viewCamera.ScreenPointToRay(screen);
         RaycastHit[] hits = Physics.RaycastAll(ray, rayDistance, ~0, QueryTriggerInteraction.Ignore);
         Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
 
@@ -615,8 +713,11 @@ public class PlacementDragger : MonoBehaviour
 
     private bool CursorOnTarget(Vector2 screen)
     {
-        Ray ray = viewCamera.ScreenPointToRay(screen);
+        return RayOnTarget(viewCamera.ScreenPointToRay(screen));
+    }
 
+    private bool RayOnTarget(Ray ray)
+    {
         foreach (RaycastHit hit in Physics.RaycastAll(ray, rayDistance, ~0, QueryTriggerInteraction.Ignore))
         {
             if (hit.collider.transform.IsChildOf(Target))
@@ -697,6 +798,23 @@ public class PlacementDragger : MonoBehaviour
     private Vector3 SpawnPoint()
     {
         Vector3 point;
+
+        PointerSource pointer = PointerSource.Resolve();
+
+        if (viewCamera != null && pointer != null && pointer.UsingXr)
+        {
+            // Headset: the user looks straight ahead at the menu, so "where the camera
+            // looks on the floor" is far away. Put it on the floor 1.5 m in front instead,
+            // slightly to the right so the menu panel does not hide it.
+            Vector3 forward = Vector3.ProjectOnPlane(viewCamera.transform.forward, Vector3.up).normalized;
+            Vector3 right = Vector3.Cross(Vector3.up, forward);
+
+            point = viewCamera.transform.position + forward * 1.5f + right * 0.4f;
+            point.y = floorY;
+
+            // Outside the walls: Contain() in MoveBaseTo pulls it back to the nearest spot inside.
+            return point;
+        }
 
         if (viewCamera != null)
         {

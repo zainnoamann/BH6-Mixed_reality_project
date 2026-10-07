@@ -12,8 +12,22 @@ using UnityEngine.EventSystems;
 public static class UiInput
 {
     /// <summary>True when the cursor is over any UI element that blocks raycasts.</summary>
-    public static bool PointerOverUI =>
-        EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
+    public static bool PointerOverUI
+    {
+        get
+        {
+            // In the headset the "cursor" is the controller ray, which the EventSystem
+            // mouse check does not know about.
+            PointerSource pointer = PointerSource.Resolve();
+
+            if (pointer != null && pointer.UsingXr)
+            {
+                return pointer.RayOverUi();
+            }
+
+            return EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
+        }
+    }
 
     /// <summary>True while a text field has keyboard focus.</summary>
     public static bool Typing

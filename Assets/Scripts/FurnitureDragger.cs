@@ -2,7 +2,8 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 
 /// <summary>
-/// Keyboard shortcut for moving furniture: point at an object (or select it) and press G.
+/// Shortcut for moving furniture: point at an object (or select it) and press G,
+/// or squeeze the grip button on the right Quest controller.
 ///
 /// The moving itself is done by PlacementDragger, the same code the toolbar's Move
 /// button and new generated items use, so every object moves the same way:
@@ -31,10 +32,13 @@ public class FurnitureDragger : MonoBehaviour
         if (UiInput.KeyboardBlocked || UiInput.PointerOverUI)
             return;
 
-        if (Keyboard.current == null || selector == null)
+        if (selector == null)
             return;
 
-        if (Keyboard.current.gKey.wasPressedThisFrame)
+        // G on the keyboard, or the grip button on the right Quest controller.
+        PointerSource pointer = PointerSource.Resolve();
+
+        if (pointer != null && pointer.GrabPressed)
         {
             selector.MoveHoveredOrSelected();
         }

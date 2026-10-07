@@ -24,6 +24,8 @@ Runs inside .venv-server (fastapi + uvicorn only). Start with:  python start.py
 from __future__ import annotations
 
 import json
+import math
+import re
 import os
 import shutil
 import subprocess
@@ -120,6 +122,66 @@ def health() -> dict:
     }
 
 
+# --------------------------------------------------------------------------- timing
+#
+# The pipelines only report a few milestones ("Loading model", "Baking texture" ...),
+# and one milestone can take minutes, so the bar used to stand still and then jump.
+# To show real progress the server remembers how long every stage took on the last
+# successful run on THIS machine (logs/stage_times.json). During the next run the bar
+# moves with the clock inside each stage, and the server can also say how many seconds
+# are left. The very first run has no history, so it falls back to the milestones.
+
+TIMES_FILE = LOG_DIR / "stage_times.json"
+TIMES_LOCK = threading.Lock()
+
+
+def _load_times() -> dict:
+    try:
+        return json.loads(TIMES_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+STAGE_TIMES: dict = _load_times()   # {"run_t2i": [["Starting", 3.1], ["Loading text encoder", 8.0], ...]}
+
+
+def stage_key(stage: str) -> str:
+    """'Generating image (2/4)' and 'Generating image (3/4)' are the same stage."""
+    return re.sub(r"\s*\(.*\)\s*$", "", stage or "").strip()
+
+
+def expected_total(key: str) -> float:
+    return sum(seconds for _, seconds in STAGE_TIMES.get(key, []))
+
+
+def remember_times(key: str, marks: list, finished: float) -> None:
+    """marks = [(stage name, start time)] of a run that succeeded."""
+    measured = []
+    for index, (name, started) in enumerate(marks):
+        ended = marks[index + 1][1] if index + 1 < len(marks) else finished
+        measured.append([name, round(max(0.05, ended - started), 2)])
+
+    with TIMES_LOCK:
+        old = STAGE_TIMES.get(key, [])
+        if [n for n, _ in old] == [n for n, _ in measured]:
+            # Same stages as before: average with the old numbers so one odd run
+            # (a first run that had to load everything from disk) does not dominate.
+            measured = [[n, round(0.5 * o + 0.5 * m, 2)] for (n, m), (_, o) in zip(measured, old)]
+        STAGE_TIMES[key] = measured
+        try:
+            TIMES_FILE.write_text(json.dumps(STAGE_TIMES, indent=1), encoding="utf-8")
+        except OSError:
+            pass
+
+
+def model_split() -> float:
+    """Share of the model phase that is shape generation (the rest is texture baking)."""
+    shape, paint = expected_total("run_hunyuan_shape"), expected_total("run_hunyuan_paint")
+    if shape > 0 and paint > 0:
+        return min(0.9, max(0.1, shape / (shape + paint)))
+    return 0.6
+
+
 # --------------------------------------------------------------------------- jobs
 
 
@@ -143,6 +205,45 @@ class Job:
         self.log = LOG_DIR / f"job-{self.id}.log"
         self.proc: Optional[subprocess.Popen] = None
         self.lock = threading.Lock()
+        # Timing of the pipeline that is running now (see "timing" above).
+        self.run_key = ""               # run_t2i | run_hunyuan_shape | run_hunyuan_paint
+        self.run_scale = (0.0, 1.0)
+        self.run_marks: list = []       # [(stage name, start time)]
+        self.run_after = 0.0            # seconds expected for the pipeline that follows
+        self.shown = 0.0                # the bar never moves backwards
+
+    def live(self) -> tuple:
+        """(progress 0..1, seconds left or -1 when unknown), using the clock."""
+        if self.status != "running" or not self.run_marks:
+            return self.progress, -1.0
+
+        expected = STAGE_TIMES.get(self.run_key, [])
+        names = [name for name, _ in expected]
+        current, started = self.run_marks[-1]
+
+        if current not in names:
+            return max(self.progress, self.shown), -1.0     # no history yet: milestones
+
+        index = names.index(current)
+        total = sum(seconds for _, seconds in expected) or 1.0
+        before = sum(seconds for _, seconds in expected[:index])
+        length = expected[index][1]
+        spent = time.time() - started
+
+        # Inside the stage follow the clock. If it takes longer than last time, slow
+        # down and creep towards the end of the stage instead of stopping dead.
+        if spent <= 0.9 * length:
+            part = spent
+        else:
+            over = spent - 0.9 * length
+            part = length * (0.9 + 0.09 * (1.0 - math.exp(-over / max(length, 1.0))))
+
+        fraction = (before + part) / total
+        lo, hi = self.run_scale
+        value = max(self.shown, min(0.99, lo + (hi - lo) * fraction))
+        self.shown = value
+        left = max(0.0, total - before - min(spent, length)) + self.run_after
+        return value, left
 
     def to_dict(self) -> dict:
         return {
@@ -152,7 +253,8 @@ class Job:
             "status": self.status,
             "phase": self.phase,
             "stage": self.stage,
-            "progress": round(self.progress, 3),
+            "progress": round(self.live()[0], 3),
+            "etaSeconds": round(self.live()[1], 1),
             "message": self.message,
             "elapsedSeconds": round(time.time() - self.created, 1),
             "imageUrl": f"/files/{self.id}/image.png" if self.image.exists() else None,
@@ -200,7 +302,12 @@ def run_pipeline(job: Job, argv: list[str], phase: str, on_success: str,
     with RUN_LOCK:
         if job.status == "cancelled":
             return
-        job.set(status="running", phase=phase, stage="Starting", progress=0.0, message="")
+        key = Path(argv[0]).stem
+        lo, hi = scale
+        job.set(status="running", phase=phase, stage="Starting", progress=lo, message="",
+                run_key=key, run_scale=scale, run_marks=[("Starting", time.time())],
+                run_after=expected_total("run_hunyuan_paint") if then is not None else 0.0,
+                shown=lo)
         with open(job.log, "a", encoding="utf-8") as log:
             log.write(f"\n=== {phase} {time.strftime('%H:%M:%S')} :: {' '.join(argv)}\n")
             try:
@@ -222,8 +329,11 @@ def run_pipeline(job: Job, argv: list[str], phase: str, on_success: str,
                     try:
                         raw = float(parts[1])
                         lo, hi = scale
-                        job.set(progress=lo + (hi - lo) * raw,
-                                stage=parts[2].strip() if len(parts) > 2 else "")
+                        stage = parts[2].strip() if len(parts) > 2 else ""
+                        name = stage_key(stage)
+                        if name and name != job.run_marks[-1][0]:
+                            job.run_marks.append((name, time.time()))
+                        job.set(progress=lo + (hi - lo) * raw, stage=stage)
                     except (IndexError, ValueError):
                         pass
                 elif line.startswith("##ERROR"):
@@ -236,6 +346,7 @@ def run_pipeline(job: Job, argv: list[str], phase: str, on_success: str,
     if code != 0:
         job.set(status="failed", message=error or f"{phase} pipeline exited with code {code} (see {job.log.name})")
         return
+    remember_times(key, job.run_marks, time.time())
     if then is not None:
         then(job)
         return
@@ -247,6 +358,8 @@ def start_image(job: Job) -> None:
     if job.image.exists():
         job.image.unlink()
     argv = [str(ROOT / "pipelines" / "run_t2i.py"), "--prompt", job.prompt, "--out", str(job.image)]
+    if getattr(job, "operation", "add") == "texture":
+        argv += ["--mode", "texture"]   # flat material image, not an object on white
     threading.Thread(target=run_pipeline, args=(job, argv, "image", "awaiting_review"), daemon=True).start()
 
 
@@ -260,12 +373,13 @@ def start_model(job: Job) -> None:
         "--steps", str(recommended.get("steps", 5)),
     ]
 
-    # With paint installed, shape is the first 60% of the model phase and texture the rest.
+    # With paint installed, shape is the first part of the model phase and texture the rest.
+    # The share comes from measured times (60% until both have been measured once).
     if paint_available():
         threading.Thread(
             target=run_pipeline,
             args=(job, argv, "model", "done"),
-            kwargs={"scale": (0.0, 0.6), "then": start_paint},
+            kwargs={"scale": (0.0, model_split()), "then": start_paint},
             daemon=True,
         ).start()
         return
@@ -291,7 +405,7 @@ def start_paint(job: Job) -> None:
                             f"See {job.log.name}.")
 
     threading.Thread(
-        target=lambda: (run_pipeline(job, argv, "model", "done", scale=(0.6, 1.0)), finish()),
+        target=lambda: (run_pipeline(job, argv, "model", "done", scale=(model_split(), 1.0)), finish()),
         daemon=True,
     ).start()
 

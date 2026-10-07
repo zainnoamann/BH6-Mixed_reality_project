@@ -342,9 +342,11 @@ public class AddItemFlow : MonoBehaviour
 
         if (dragger.Blocked)
         {
-            Say(resultStatusText, "It overlaps other furniture (red). Move it to a free spot first.");
+            Say(resultStatusText, "NOT ACCEPTED: it overlaps other furniture (red). Move it to a free spot, then Accept again.");
             return;
         }
+
+        GameObject accepted = placed;
 
         dragger.Finish();
         placed = null;
@@ -352,6 +354,13 @@ public class AddItemFlow : MonoBehaviour
 
         Show(reviewPanel, false);
         Say(statusText, "Status: item added");
+
+        // Leave the new item selected, so Move / Rotate / Resize / Delete are right there.
+        MouseObjectSelector selector = FindFirstObjectByType<MouseObjectSelector>();
+        if (selector != null && accepted != null)
+        {
+            selector.SelectObject(accepted.GetComponent<ObjectInteraction>());
+        }
     }
 
     /// <summary>Undo, on the review panel: remove the object that was just added.</summary>
@@ -620,7 +629,10 @@ public class AddItemFlow : MonoBehaviour
         dragger.Begin(placed.transform, roomRootName);
         stage = Stage.Placing;
 
-        Say(resultStatusText, "Move the mouse to place it, click to drop. Q / E or scroll rotates. Then Accept.");
+        PointerSource pointer = PointerSource.Resolve();
+        Say(resultStatusText, pointer != null && pointer.UsingXr
+            ? "Point to place it, trigger to drop. X / Y rotates. Then Accept."
+            : "Move the mouse to place it, click to drop. Q / E or scroll rotates. Then Accept.");
         Show(reviewPanel, true);
     }
 
@@ -762,9 +774,11 @@ public class AddItemFlow : MonoBehaviour
         Show(reviewPanel, false);
         Say(loadingText, title);
 
+        progressTarget = -1f; // stop sliding until the server reports again
+
         if (loadingFill != null)
         {
-            loadingFill.fillAmount = 0f;
+            SetBar(0f);
         }
 
         Show(loadingPopup, true);
@@ -777,12 +791,64 @@ public class AddItemFlow : MonoBehaviour
             return;
         }
 
-        if (loadingFill != null)
+        // The server is asked once a second. Update() slides the bar to the new value,
+        // so it moves smoothly instead of in small jumps.
+        progressTarget = Mathf.Clamp01(job.progress);
+
+        if (job.etaSeconds >= 0f)
         {
-            loadingFill.fillAmount = Mathf.Clamp01(job.progress);
+            Say(loadingText, string.Format("{0}   {1:0}s, about {2} left",
+                                           job.stage, job.elapsedSeconds, Friendly(job.etaSeconds)));
+        }
+        else
+        {
+            Say(loadingText, string.Format("{0}   {1:0}s", job.stage, job.elapsedSeconds));
+        }
+    }
+
+    private float progressTarget = -1f;
+
+    private void Update()
+    {
+        if (progressTarget < 0f || loadingFill == null)
+        {
+            return;
         }
 
-        Say(loadingText, string.Format("{0}   {1:0}s", job.stage, job.elapsedSeconds));
+        float blend = 1f - Mathf.Exp(-3f * Time.unscaledDeltaTime);
+        SetBar(Mathf.Lerp(barValue, progressTarget, blend));
+    }
+
+    private float barValue;
+
+    /// <summary>
+    /// Sets how full the loading bar is, from 0 to 1. The blue image is made narrower
+    /// or wider by moving its right edge. This works for every kind of image; the old
+    /// way ("fill amount") only works on some, and the bar then stayed full.
+    /// </summary>
+    private void SetBar(float value)
+    {
+        barValue = Mathf.Clamp01(value);
+
+        if (loadingFill == null)
+        {
+            return;
+        }
+
+        loadingFill.fillAmount = 1f;
+
+        RectTransform rect = loadingFill.rectTransform;
+        rect.anchorMin = new Vector2(0f, 0f);
+        rect.anchorMax = new Vector2(barValue, 1f);
+        rect.offsetMin = Vector2.zero;
+        rect.offsetMax = Vector2.zero;
+    }
+
+    /// <summary>"45s" or "2 min 10s".</summary>
+    private static string Friendly(float seconds)
+    {
+        int whole = Mathf.CeilToInt(seconds);
+        return whole < 60 ? whole + "s" : string.Format("{0} min {1}s", whole / 60, whole % 60);
     }
 
     private IEnumerator Simulate(float seconds, string[] stages)
@@ -797,7 +863,7 @@ public class AddItemFlow : MonoBehaviour
 
             if (loadingFill != null)
             {
-                loadingFill.fillAmount = t;
+                SetBar(t);
             }
 
             int index = Mathf.Min(stages.Length - 1, Mathf.FloorToInt(t * stages.Length));

@@ -16,8 +16,9 @@ public class ObjectInteraction : MonoBehaviour
     // The old full yellow / cyan made every clicked object look painted blue.
     private static readonly Color HoverTint = new Color(1f, 0.95f, 0.75f);
     private static readonly Color SelectedTint = new Color(0.7f, 0.88f, 1f);
-    private static readonly Color ValidTint = new Color(0.65f, 1f, 0.65f);
-    private static readonly Color BlockedTint = new Color(1f, 0.5f, 0.5f);
+    // Strong on purpose: on a brown or dark object a light tint read as "pink", not "blocked".
+    private static readonly Color ValidTint = new Color(0.45f, 1f, 0.45f);
+    private static readonly Color BlockedTint = new Color(1f, 0.2f, 0.2f);
 
     private void Awake()
     {
