@@ -69,11 +69,23 @@ public class MouseObjectSelector : MonoBehaviour
         Transform canvas = FindUiCanvas();
         if (canvas != null)
         {
+            // New look for the panels made in the scene (see UiTheme).
+            UiTheme.Apply(canvas);
+
             VrKeyboard.Create(canvas);
+
+            // Headset: float the menu in front of the user, bigger, and inside the walls.
+            Canvas uiCanvas = canvas.GetComponent<Canvas>();
+            if (uiCanvas != null && uiCanvas.renderMode == RenderMode.WorldSpace &&
+                canvas.GetComponent<VrMenuPlacer>() == null)
+            {
+                canvas.gameObject.AddComponent<VrMenuPlacer>().roomRootName = roomRootName;
+            }
             toolbar = SelectionToolbar.Create(canvas);
             toolbar.MoveClicked += MoveSelected;
             toolbar.ResizeClicked += ResizeSelected;
             toolbar.RotateClicked += RotateSelected;
+            toolbar.DeleteClicked += DeleteSelected;
             toolbar.TextureClicked += OpenTexturePanel;
             toolbar.CloseClicked += Deselect;
         }
@@ -128,6 +140,32 @@ public class MouseObjectSelector : MonoBehaviour
     public void MoveSelected()
     {
         StartMove(selectedObject);
+    }
+
+    /// <summary>Selects an object from code, for example a new item right after Accept.</summary>
+    public void SelectObject(ObjectInteraction target)
+    {
+        if (target == null || RoomShell.IsFixed(target.gameObject.name))
+            return;
+
+        Select(target);
+    }
+
+    /// <summary>Removes the selected object from the room (toolbar Delete button).</summary>
+    public void DeleteSelected()
+    {
+        ObjectInteraction target = selectedObject;
+
+        if (target == null || (placer != null && placer.IsActive))
+            return;
+
+        if (hoveredObject == target)
+        {
+            hoveredObject = null;
+        }
+
+        Deselect();
+        Destroy(target.gameObject);
     }
 
     /// <summary>Starts rotating the selected object in place (toolbar Rotate button).</summary>
@@ -343,7 +381,7 @@ public class MouseObjectSelector : MonoBehaviour
         {
             toolbar.ShowHint("Moving " + target.gameObject.name + ": " + Hint(
                 "click to place  |  Q / E or scroll to rotate  |  + / - to resize  |  Esc to cancel",
-                "trigger to place  |  A / X to rotate  |  B to cancel"));
+                "trigger to place  |  X / Y to rotate  |  B to cancel"));
         }
     }
 
@@ -366,7 +404,7 @@ public class MouseObjectSelector : MonoBehaviour
 
         toolbar.ShowHint(resizeHint + ": " + size + "  |  " + Hint(
             "scroll or + / -  |  click to keep  |  Esc to cancel",
-            "A bigger, X smaller  |  trigger to keep  |  B to cancel"));
+            "Y bigger, X smaller  |  trigger to keep  |  B to cancel"));
     }
 
     /// <summary>Live angle while rotating, e.g. "Turned +30 degrees".</summary>
@@ -377,7 +415,7 @@ public class MouseObjectSelector : MonoBehaviour
 
         toolbar.ShowHint(rotateHint + ": " + angle + "  |  " + Hint(
             "scroll or Q / E (Shift = fine)  |  click to keep  |  Esc to cancel",
-            "A right, X left  |  trigger to keep  |  B to cancel"));
+            "Y right, X left  |  trigger to keep  |  B to cancel"));
     }
 
     // ------------------------------------------------------------------ helpers

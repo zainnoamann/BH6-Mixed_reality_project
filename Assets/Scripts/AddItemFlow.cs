@@ -342,9 +342,11 @@ public class AddItemFlow : MonoBehaviour
 
         if (dragger.Blocked)
         {
-            Say(resultStatusText, "It overlaps other furniture (red). Move it to a free spot first.");
+            Say(resultStatusText, "NOT ACCEPTED: it overlaps other furniture (red). Move it to a free spot, then Accept again.");
             return;
         }
+
+        GameObject accepted = placed;
 
         dragger.Finish();
         placed = null;
@@ -352,6 +354,13 @@ public class AddItemFlow : MonoBehaviour
 
         Show(reviewPanel, false);
         Say(statusText, "Status: item added");
+
+        // Leave the new item selected, so Move / Rotate / Resize / Delete are right there.
+        MouseObjectSelector selector = FindFirstObjectByType<MouseObjectSelector>();
+        if (selector != null && accepted != null)
+        {
+            selector.SelectObject(accepted.GetComponent<ObjectInteraction>());
+        }
     }
 
     /// <summary>Undo, on the review panel: remove the object that was just added.</summary>
@@ -622,7 +631,7 @@ public class AddItemFlow : MonoBehaviour
 
         PointerSource pointer = PointerSource.Resolve();
         Say(resultStatusText, pointer != null && pointer.UsingXr
-            ? "Point to place it, trigger to drop. A / X rotates. Then Accept."
+            ? "Point to place it, trigger to drop. X / Y rotates. Then Accept."
             : "Move the mouse to place it, click to drop. Q / E or scroll rotates. Then Accept.");
         Show(reviewPanel, true);
     }

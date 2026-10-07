@@ -13,7 +13,7 @@ using UnityEngine.InputSystem;
 ///   Escape         - cancel
 ///
 /// In the headset (PointerSource): the object follows the right controller ray,
-/// trigger places it, A / X rotate (or resize in Resize mode), B cancels.
+/// trigger places it, X / Y rotate (or resize in Resize mode), B cancels.
 ///
 /// Preview: green = the spot is free, red = it overlaps other furniture.
 ///
@@ -387,7 +387,7 @@ public class PlacementDragger : MonoBehaviour
 
     /// <summary>
     /// Headset version of the three modes. Same rules as the mouse: the ray moves the
-    /// object, trigger confirms (refused while red), B cancels, A / X step.
+    /// object, trigger confirms (refused while red), B cancels, X / Y step.
     /// </summary>
     private void UpdateXr(PointerSource pointer)
     {
@@ -798,6 +798,23 @@ public class PlacementDragger : MonoBehaviour
     private Vector3 SpawnPoint()
     {
         Vector3 point;
+
+        PointerSource pointer = PointerSource.Resolve();
+
+        if (viewCamera != null && pointer != null && pointer.UsingXr)
+        {
+            // Headset: the user looks straight ahead at the menu, so "where the camera
+            // looks on the floor" is far away. Put it on the floor 1.5 m in front instead,
+            // slightly to the right so the menu panel does not hide it.
+            Vector3 forward = Vector3.ProjectOnPlane(viewCamera.transform.forward, Vector3.up).normalized;
+            Vector3 right = Vector3.Cross(Vector3.up, forward);
+
+            point = viewCamera.transform.position + forward * 1.5f + right * 0.4f;
+            point.y = floorY;
+
+            // Outside the walls: Contain() in MoveBaseTo pulls it back to the nearest spot inside.
+            return point;
+        }
 
         if (viewCamera != null)
         {

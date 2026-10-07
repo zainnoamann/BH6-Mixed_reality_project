@@ -8,25 +8,33 @@ using UnityEngine.XR;
 /// whether the answer comes from a mouse or from a Quest controller.
 ///
 /// Nothing has to be wired in the scene: Resolve() creates one if the scene has none,
-/// and it finds the "Right Controller" of the XR Origin by name.
+/// and it finds the "Right Controller" and "Left Controller" of the XR Origin by name.
+///
+/// Both controllers draw the same blue pointer (a line with a dot where it lands).
+/// Either hand can point: the hand that last pulled its trigger or grip is the active
+/// one, and select / place / pick up follow that hand.
 ///
 /// Headset buttons:
-///   Trigger (right)  - select / place / confirm
-///   Grip (right)     - pick up the object you point at
-///   A (right)        - step up   (rotate right, or bigger while resizing)
-///   X (left)         - step down (rotate left, or smaller while resizing)
-///   B (right)        - cancel / deselect
+///   Trigger (either hand)  - select / place / confirm
+///   Grip (either hand)     - pick up the object you point at
+///   Y (left)               - step up   (rotate right, or bigger while resizing)
+///   X (left)               - step down (rotate left, or smaller while resizing)
+///   B (right)              - cancel / deselect
+///
+/// A on the right controller is left alone: the XR rig uses it for Jump.
 ///
 /// On desktop nothing changes: the ray comes from the mouse and select is left click.
-/// On the headset the ray comes out of the controller and select is the trigger.
 /// </summary>
 public class PointerSource : MonoBehaviour
 {
     public static PointerSource Instance { get; private set; }
 
     [Header("XR")]
-    [Tooltip("The right hand controller transform inside XR Origin.")]
+    [Tooltip("The right hand controller transform inside XR Origin. Found by name when empty.")]
     [SerializeField] private Transform rightHand;
+
+    [Tooltip("The left hand controller transform inside XR Origin. Found by name when empty.")]
+    [SerializeField] private Transform leftHand;
 
     [Tooltip("Force XR mode even when no headset is detected. For testing only.")]
     [SerializeField] private bool forceXr;
@@ -34,12 +42,65 @@ public class PointerSource : MonoBehaviour
     [Header("Shared")]
     [SerializeField] private Camera viewCamera;
 
+    [Header("Headset pointer")]
+    [Tooltip("Draw a line and a dot from each controller.")]
+    [SerializeField] private bool showPointer = true;
+
+    [SerializeField] private Color pointerColour = new Color(0.3f, 0.9f, 1f, 1f);
+
+    [SerializeField] private float pointerLength = 8f;
+
+    [Tooltip("Hide XR Interaction Toolkit's own white ray on both controllers, so only " +
+             "this pointer shows. Turn on only if both rays land on the same spot.")]
+    [SerializeField] private bool hideToolkitRay;
+
+    [Tooltip("How strongly hand shake is smoothed. Lower = steadier but slower to follow.")]
+    [SerializeField] private float aimSmoothing = 18f;
+
+    /// <summary>Everything that exists once per controller.</summary>
+    private class HandState
+    {
+        public XRNode node;
+        public string controllerName;
+        public string originName;
+
+        public Transform transform;
+        public Transform xriOrigin;
+        public float nextOriginSearch;
+
+        public int aimFrame = -1;
+        public bool aimStarted;
+        public Vector3 aimPosition;
+        public Vector3 aimDirection = Vector3.forward;
+
+        public bool triggerNow;
+        public bool triggerLast;
+        public bool gripNow;
+        public bool gripLast;
+
+        public LineRenderer line;
+        public Transform dot;
+    }
+
+    private readonly HandState right = new HandState
+    {
+        node = XRNode.RightHand,
+        controllerName = "Right Controller",
+        originName = "[Right CurveInteractionCaster] Stabilization Cast Origin",
+    };
+
+    private readonly HandState left = new HandState
+    {
+        node = XRNode.LeftHand,
+        controllerName = "Left Controller",
+        originName = "[Left CurveInteractionCaster] Stabilization Cast Origin",
+    };
+
+    /// <summary>The hand whose ray and trigger the app is listening to right now.</summary>
+    private HandState active;
+
     private int lastFrame = -1;
 
-    private bool triggerNow;
-    private bool triggerLast;
-    private bool gripNow;
-    private bool gripLast;
     private bool stepUpNow;
     private bool stepUpLast;
     private bool stepDownNow;
@@ -48,12 +109,16 @@ public class PointerSource : MonoBehaviour
     private bool cancelLast;
 
     private float nextSearchTime;
+    private float nextHideTime;
+    private Material pointerMaterial;
+
     private int uiFrame = -1;
     private bool uiResult;
 
     private void Awake()
     {
         Instance = this;
+        active = right;
 
         if (viewCamera == null)
         {
@@ -86,6 +151,19 @@ public class PointerSource : MonoBehaviour
         Refresh();
     }
 
+    private void LateUpdate()
+    {
+        bool xr = showPointer && UsingXr;
+
+        DrawPointer(right, xr);
+        DrawPointer(left, xr);
+
+        if (xr && hideToolkitRay)
+        {
+            HideToolkitRay();
+        }
+    }
+
     /// <summary>True when a headset is connected and being worn.</summary>
     public bool UsingXr
     {
@@ -99,14 +177,15 @@ public class PointerSource : MonoBehaviour
             if (!head.isValid)
                 return false;
 
-            if (rightHand == null && Time.unscaledTime >= nextSearchTime)
+            if ((right.transform == null || left.transform == null) &&
+                Time.unscaledTime >= nextSearchTime)
             {
                 // The rig may have been enabled after Awake; look again, once a second.
                 nextSearchTime = Time.unscaledTime + 1f;
                 Configure(Camera.main);
             }
 
-            return rightHand != null;
+            return right.transform != null;
         }
     }
 
@@ -123,8 +202,10 @@ public class PointerSource : MonoBehaviour
         }
     }
 
-    /// <summary>The controller transform, so callers can read its rotation.</summary>
-    public Transform Hand => rightHand;
+    /// <summary>The active controller transform, so callers can read its rotation.</summary>
+    public Transform Hand => Active.transform;
+
+    private HandState Active => active ?? right;
 
     public void Configure(Camera camera)
     {
@@ -137,9 +218,10 @@ public class PointerSource : MonoBehaviour
             ? viewCamera.transform.root
             : null;
 
-        rightHand = FindRightController(rigRoot);
+        right.transform = rightHand != null ? rightHand : FindController(rigRoot, right.controllerName);
+        left.transform = leftHand != null ? leftHand : FindController(rigRoot, left.controllerName);
 
-        if (rightHand == null)
+        if (right.transform == null)
         {
             Debug.LogWarning(
                 "PointerSource could not find a Right Controller in the active XR rig.",
@@ -147,14 +229,14 @@ public class PointerSource : MonoBehaviour
         }
     }
 
-    private static Transform FindRightController(Transform rigRoot)
+    private static Transform FindController(Transform rigRoot, string controllerName)
     {
         if (rigRoot != null)
         {
             foreach (Transform candidate in
                      rigRoot.GetComponentsInChildren<Transform>(true))
             {
-                if (candidate.name == "Right Controller")
+                if (candidate.name == controllerName)
                 {
                     return candidate;
                 }
@@ -164,7 +246,7 @@ public class PointerSource : MonoBehaviour
         foreach (Transform candidate in
                  FindObjectsByType<Transform>(FindObjectsSortMode.None))
         {
-            if (candidate.name == "Right Controller")
+            if (candidate.name == controllerName)
             {
                 return candidate;
             }
@@ -177,18 +259,14 @@ public class PointerSource : MonoBehaviour
     // Pointing
     // ------------------------------------------------------------------
 
-    /// <summary>The ray the user is currently pointing along.</summary>
+    /// <summary>The ray the user is currently pointing along (the active hand in the headset).</summary>
     public bool TryGetRay(out Ray ray)
     {
         ray = default;
 
         if (UsingXr)
         {
-            if (rightHand == null)
-                return false;
-
-            ray = new Ray(rightHand.position, rightHand.forward);
-            return true;
+            return TryGetHandRay(Active, out ray);
         }
 
         if (Mouse.current == null || ViewCamera == null)
@@ -196,6 +274,192 @@ public class PointerSource : MonoBehaviour
 
         ray = ViewCamera.ScreenPointToRay(Mouse.current.position.ReadValue());
         return true;
+    }
+
+    private bool TryGetHandRay(HandState hand, out Ray ray)
+    {
+        ray = default;
+
+        if (hand.transform == null || !hand.transform.gameObject.activeInHierarchy)
+            return false;
+
+        UpdateAim(hand);
+        ray = new Ray(hand.aimPosition, hand.aimDirection);
+        return true;
+    }
+
+    /// <summary>
+    /// Works out one hand's pointing ray, once per frame.
+    ///
+    /// A hand is never perfectly still, and a small shake at the wrist becomes a big jump
+    /// two metres away. So the ray is smoothed a little. When XR Interaction Toolkit has
+    /// made its own stabilised ray origin (the one its visible UI ray uses), that is used
+    /// instead, so this pointer and the UI ray point at exactly the same place.
+    /// </summary>
+    private void UpdateAim(HandState hand)
+    {
+        if (hand.aimFrame == Time.frameCount)
+            return;
+
+        hand.aimFrame = Time.frameCount;
+
+        Vector3 position = hand.transform.position;
+        Vector3 direction = hand.transform.forward;
+
+        if (hand.xriOrigin == null && Time.unscaledTime >= hand.nextOriginSearch)
+        {
+            hand.nextOriginSearch = Time.unscaledTime + 1f;
+            GameObject found = GameObject.Find(hand.originName);
+            hand.xriOrigin = found != null ? found.transform : null;
+        }
+
+        // Only trust it while it really sits at the hand; otherwise it is stale.
+        if (hand.xriOrigin != null && hand.xriOrigin.gameObject.activeInHierarchy &&
+            (hand.xriOrigin.position - hand.transform.position).sqrMagnitude < 0.25f)
+        {
+            position = hand.xriOrigin.position;
+            direction = hand.xriOrigin.forward;
+        }
+
+        if (!hand.aimStarted)
+        {
+            hand.aimStarted = true;
+            hand.aimPosition = position;
+            hand.aimDirection = direction;
+            return;
+        }
+
+        float blend = 1f - Mathf.Exp(-aimSmoothing * Time.unscaledDeltaTime);
+        hand.aimPosition = Vector3.Lerp(hand.aimPosition, position, blend);
+        hand.aimDirection = Vector3.Slerp(hand.aimDirection, direction, blend).normalized;
+    }
+
+    // ------------------------------------------------------------------
+    // The visible pointer
+    // ------------------------------------------------------------------
+
+    /// <summary>
+    /// A thin line from the controller with a dot where it lands, so it is clear what
+    /// the trigger will act on. Shown on the menu as well as in the room.
+    /// </summary>
+    private void DrawPointer(HandState hand, bool xr)
+    {
+        if (!xr || !TryGetHandRay(hand, out Ray aim))
+        {
+            if (hand.line != null) hand.line.enabled = false;
+            if (hand.dot != null) hand.dot.gameObject.SetActive(false);
+            return;
+        }
+
+        if (hand.line == null)
+        {
+            BuildPointer(hand);
+        }
+
+        Vector3 end = aim.origin + aim.direction * pointerLength;
+        bool hitSomething;
+
+        if (RayHitsUi(aim, out float uiDistance))
+        {
+            // The menu is drawn on top of the room, so the pointer stops on the menu.
+            end = aim.origin + aim.direction * uiDistance;
+            hitSomething = true;
+        }
+        else
+        {
+            hitSomething = Physics.Raycast(aim, out RaycastHit hit, pointerLength, ~0,
+                                           QueryTriggerInteraction.Ignore);
+
+            if (hitSomething)
+            {
+                end = hit.point;
+            }
+        }
+
+        hand.line.enabled = true;
+        hand.line.SetPosition(0, aim.origin);
+        hand.line.SetPosition(1, end);
+
+        hand.dot.gameObject.SetActive(hitSomething);
+        hand.dot.position = end;
+
+        // Keep the dot the same size to the eye, near or far.
+        float distance = Vector3.Distance(aim.origin, end);
+        hand.dot.localScale = Vector3.one * Mathf.Clamp(distance * 0.015f, 0.01f, 0.06f);
+    }
+
+    private void BuildPointer(HandState hand)
+    {
+        if (pointerMaterial == null)
+        {
+            Shader shader = Shader.Find("Universal Render Pipeline/Unlit");
+            if (shader == null) shader = Shader.Find("Sprites/Default");
+
+            pointerMaterial = new Material(shader);
+            pointerMaterial.color = pointerColour;
+            if (pointerMaterial.HasProperty("_BaseColor"))
+            {
+                pointerMaterial.SetColor("_BaseColor", pointerColour);
+            }
+        }
+
+        GameObject lineObject = new GameObject(hand.controllerName + " PointerLine");
+        lineObject.transform.SetParent(transform, false);
+
+        hand.line = lineObject.AddComponent<LineRenderer>();
+        hand.line.useWorldSpace = true;
+        hand.line.positionCount = 2;
+        hand.line.startWidth = 0.006f;
+        hand.line.endWidth = 0.003f;
+        hand.line.sharedMaterial = pointerMaterial;
+        hand.line.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        hand.line.receiveShadows = false;
+
+        GameObject dot = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        dot.name = hand.controllerName + " PointerDot";
+        dot.transform.SetParent(transform, false);
+
+        // No collider: the dot must never block the ray it is showing.
+        Collider dotCollider = dot.GetComponent<Collider>();
+        if (dotCollider != null) Destroy(dotCollider);
+
+        Renderer dotRenderer = dot.GetComponent<Renderer>();
+        dotRenderer.sharedMaterial = pointerMaterial;
+        dotRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        dotRenderer.receiveShadows = false;
+
+        hand.dot = dot.transform;
+    }
+
+    /// <summary>
+    /// Optional: switch off XR Interaction Toolkit's own line on the controllers, so only
+    /// this pointer is seen. Found by component name, so this file needs no reference to
+    /// the toolkit. Clicking the menu still works; only the drawing is hidden.
+    /// </summary>
+    private void HideToolkitRay()
+    {
+        if (Time.unscaledTime < nextHideTime)
+            return;
+
+        nextHideTime = Time.unscaledTime + 1f;
+
+        HideToolkitRay(right.transform);
+        HideToolkitRay(left.transform);
+    }
+
+    private static void HideToolkitRay(Transform controller)
+    {
+        if (controller == null)
+            return;
+
+        foreach (Behaviour behaviour in controller.GetComponentsInChildren<Behaviour>(true))
+        {
+            if (behaviour != null && behaviour.GetType().Name == "CurveVisualController" &&
+                behaviour.gameObject.activeSelf)
+            {
+                behaviour.gameObject.SetActive(false);
+            }
+        }
     }
 
     // ------------------------------------------------------------------
@@ -209,7 +473,7 @@ public class PointerSource : MonoBehaviour
             Refresh();
 
             return UsingXr
-                ? triggerNow && !triggerLast
+                ? Active.triggerNow && !Active.triggerLast
                 : Mouse.current != null &&
                   Mouse.current.leftButton.wasPressedThisFrame;
         }
@@ -222,7 +486,7 @@ public class PointerSource : MonoBehaviour
             Refresh();
 
             return UsingXr
-                ? triggerNow
+                ? Active.triggerNow
                 : Mouse.current != null && Mouse.current.leftButton.isPressed;
         }
     }
@@ -234,7 +498,7 @@ public class PointerSource : MonoBehaviour
             Refresh();
 
             return UsingXr
-                ? !triggerNow && triggerLast
+                ? !Active.triggerNow && Active.triggerLast
                 : Mouse.current != null &&
                   Mouse.current.leftButton.wasReleasedThisFrame;
         }
@@ -251,7 +515,7 @@ public class PointerSource : MonoBehaviour
             Refresh();
 
             return UsingXr
-                ? gripNow && !gripLast
+                ? Active.gripNow && !Active.gripLast
                 : Keyboard.current != null &&
                   Keyboard.current.gKey.wasPressedThisFrame;
         }
@@ -264,7 +528,7 @@ public class PointerSource : MonoBehaviour
             Refresh();
 
             return UsingXr
-                ? gripNow
+                ? Active.gripNow
                 : Keyboard.current != null && Keyboard.current.gKey.isPressed;
         }
     }
@@ -276,7 +540,7 @@ public class PointerSource : MonoBehaviour
             Refresh();
 
             return UsingXr
-                ? !gripNow && gripLast
+                ? !Active.gripNow && Active.gripLast
                 : Keyboard.current != null &&
                   Keyboard.current.gKey.wasReleasedThisFrame;
         }
@@ -296,7 +560,7 @@ public class PointerSource : MonoBehaviour
         }
     }
 
-    /// <summary>Headset only: A on the right controller. Rotate right / make bigger.</summary>
+    /// <summary>Headset only: Y on the left controller. Rotate right / make bigger.</summary>
     public bool StepUpPressed
     {
         get
@@ -321,7 +585,7 @@ public class PointerSource : MonoBehaviour
     // ------------------------------------------------------------------
 
     /// <summary>
-    /// True when the controller ray points at a UI element of a world-space canvas.
+    /// True when the active controller ray points at a UI element of a world-space canvas.
     /// EventSystem.IsPointerOverGameObject() only knows about the mouse, so in the
     /// headset a trigger press on a button would also select the furniture behind it.
     /// </summary>
@@ -331,14 +595,13 @@ public class PointerSource : MonoBehaviour
             return uiResult;
 
         uiFrame = Time.frameCount;
-        uiResult = ComputeRayOverUi();
+        uiResult = TryGetRay(out Ray ray) && RayHitsUi(ray, out _);
         return uiResult;
     }
 
-    private bool ComputeRayOverUi()
+    private static bool RayHitsUi(Ray ray, out float hitDistance)
     {
-        if (!TryGetRay(out Ray ray))
-            return false;
+        hitDistance = 0f;
 
         foreach (Canvas canvas in FindObjectsByType<Canvas>(FindObjectsSortMode.None))
         {
@@ -361,7 +624,10 @@ public class PointerSource : MonoBehaviour
                 Vector2 local = rect.InverseTransformPoint(world);
 
                 if (rect.rect.Contains(local))
+                {
+                    hitDistance = distance;
                     return true;
+                }
             }
         }
 
@@ -377,56 +643,79 @@ public class PointerSource : MonoBehaviour
 
         lastFrame = Time.frameCount;
 
-        triggerLast = triggerNow;
-        gripLast = gripNow;
+        ReadHand(right);
+        ReadHand(left);
+
+        // The hand that presses becomes the pointing hand. Its press still counts this
+        // frame, because its own "last" value is false.
+        HandState other = Active == right ? left : right;
+        bool otherPressed = (other.triggerNow && !other.triggerLast) ||
+                            (other.gripNow && !other.gripLast);
+        bool activeBusy = Active.triggerNow || Active.gripNow;
+
+        if (otherPressed && !activeBusy && other.transform != null)
+        {
+            active = other;
+            uiFrame = -1; // the "over the menu" answer was for the other hand
+        }
+
         stepUpLast = stepUpNow;
         stepDownLast = stepDownNow;
         cancelLast = cancelNow;
 
-        UnityEngine.XR.InputDevice left = InputDevices.GetDeviceAtXRNode(XRNode.LeftHand);
-        stepDownNow = left.isValid &&
-                      left.TryGetFeatureValue(
+        UnityEngine.XR.InputDevice leftDevice = InputDevices.GetDeviceAtXRNode(XRNode.LeftHand);
+
+        stepDownNow = leftDevice.isValid &&
+                      leftDevice.TryGetFeatureValue(
                           UnityEngine.XR.CommonUsages.primaryButton, out bool xPressed) &&
                       xPressed;
 
-        UnityEngine.XR.InputDevice hand = InputDevices.GetDeviceAtXRNode(XRNode.RightHand);
+        // Y, not A: the XR rig's Jump action is bound to A, so A made the player hop.
+        stepUpNow = leftDevice.isValid &&
+                    leftDevice.TryGetFeatureValue(
+                        UnityEngine.XR.CommonUsages.secondaryButton, out bool yPressed) &&
+                    yPressed;
 
-        if (!hand.isValid)
+        UnityEngine.XR.InputDevice rightDevice = InputDevices.GetDeviceAtXRNode(XRNode.RightHand);
+
+        cancelNow = rightDevice.isValid &&
+                    rightDevice.TryGetFeatureValue(
+                        UnityEngine.XR.CommonUsages.secondaryButton, out bool bPressed) &&
+                    bPressed;
+    }
+
+    private static void ReadHand(HandState hand)
+    {
+        hand.triggerLast = hand.triggerNow;
+        hand.gripLast = hand.gripNow;
+
+        UnityEngine.XR.InputDevice device = InputDevices.GetDeviceAtXRNode(hand.node);
+
+        if (!device.isValid)
         {
-            triggerNow = false;
-            gripNow = false;
-            stepUpNow = false;
-            cancelNow = false;
+            hand.triggerNow = false;
+            hand.gripNow = false;
             return;
         }
 
-        stepUpNow =
-            hand.TryGetFeatureValue(
-                UnityEngine.XR.CommonUsages.primaryButton, out bool aPressed) &&
-            aPressed;
-        cancelNow =
-            hand.TryGetFeatureValue(
-                UnityEngine.XR.CommonUsages.secondaryButton, out bool bPressed) &&
-            bPressed;
-
         bool triggerButton =
-            hand.TryGetFeatureValue(
+            device.TryGetFeatureValue(
                 UnityEngine.XR.CommonUsages.triggerButton, out bool triggerPressed) &&
             triggerPressed;
         bool triggerAxis =
-            hand.TryGetFeatureValue(
+            device.TryGetFeatureValue(
                 UnityEngine.XR.CommonUsages.trigger, out float triggerValue) &&
             triggerValue >= 0.5f;
         bool gripButton =
-            hand.TryGetFeatureValue(
+            device.TryGetFeatureValue(
                 UnityEngine.XR.CommonUsages.gripButton, out bool gripPressed) &&
             gripPressed;
         bool gripAxis =
-            hand.TryGetFeatureValue(
+            device.TryGetFeatureValue(
                 UnityEngine.XR.CommonUsages.grip, out float gripValue) &&
             gripValue >= 0.5f;
 
-        triggerNow = triggerButton || triggerAxis;
-        gripNow = gripButton || gripAxis;
+        hand.triggerNow = triggerButton || triggerAxis;
+        hand.gripNow = gripButton || gripAxis;
     }
 }
