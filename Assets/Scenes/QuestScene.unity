@@ -4118,6 +4118,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::MenuController
   menuPanel: {fileID: 1816297768}
   selectionUIController: {fileID: 967062139}
+  menuButtonRect: {fileID: 1640388220}
 --- !u!114 &967062145
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -6220,7 +6221,7 @@ MonoBehaviour:
       m_Calls:
       - m_Target: {fileID: 967062144}
         m_TargetAssemblyTypeName: MenuController, Assembly-CSharp
-        m_MethodName: OpenMenu
+        m_MethodName: ToggleMenu
         m_Mode: 1
         m_Arguments:
           m_ObjectArgument: {fileID: 0}
