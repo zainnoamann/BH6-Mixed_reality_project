@@ -247,6 +247,8 @@ def start_image(job: Job) -> None:
     if job.image.exists():
         job.image.unlink()
     argv = [str(ROOT / "pipelines" / "run_t2i.py"), "--prompt", job.prompt, "--out", str(job.image)]
+    if getattr(job, "operation", "add") == "texture":
+        argv += ["--mode", "texture"]   # flat material image, not an object on white
     threading.Thread(target=run_pipeline, args=(job, argv, "image", "awaiting_review"), daemon=True).start()
 
 

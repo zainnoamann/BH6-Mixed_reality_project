@@ -63,6 +63,9 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--steps", type=int, default=4)
     parser.add_argument("--size", type=int, default=1024)
+    parser.add_argument("--mode", choices=["object", "texture"], default="object",
+                        help="object: one item on a white background (for 3D). "
+                             "texture: a flat surface that fills the whole image.")
     args = parser.parse_args()
 
     import torch
@@ -77,7 +80,14 @@ def main() -> None:
     out.parent.mkdir(parents=True, exist_ok=True)
 
     # Product-photo framing gives TripoSR a clean subject to reconstruct.
-    prompt = f"{args.prompt}, plain white background, product photo, 3/4 view"
+    if args.mode == "texture":
+        # A texture is wrapped around an existing object, so the picture must be the
+        # material only: no object, no background, no shadows, edge to edge.
+        prompt = (f"seamless tileable texture of {args.prompt}, flat surface filling the "
+                  "entire image edge to edge, top-down orthographic view, even diffuse "
+                  "lighting, no shadows, no objects, no background, no border")
+    else:
+        prompt = f"{args.prompt}, plain white background, product photo, 3/4 view"
 
     progress(0.02, "Loading text encoder")
 
