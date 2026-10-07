@@ -111,6 +111,7 @@ public class PointerSource : MonoBehaviour
     private float nextSearchTime;
     private float nextHideTime;
     private Material pointerMaterial;
+    private Material dotMaterial;
 
     private int uiFrame = -1;
     private bool uiResult;
@@ -392,6 +393,30 @@ public class PointerSource : MonoBehaviour
         hand.dot.localScale = Vector3.one * Mathf.Clamp(distance * 0.015f, 0.01f, 0.06f);
     }
 
+    /// <summary>
+    /// The dot is drawn after everything else and ignores depth. The menu is drawn
+    /// "always on top" (see VrMenuPlacer), so a normal dot was painted over by it.
+    /// </summary>
+    private Material DotMaterial()
+    {
+        if (dotMaterial != null)
+        {
+            return dotMaterial;
+        }
+
+        Shader shader = Shader.Find("UI/Default");
+        if (shader == null)
+        {
+            return pointerMaterial; // fallback: the old dot, hidden behind the menu
+        }
+
+        dotMaterial = new Material(shader);
+        dotMaterial.color = pointerColour;
+        dotMaterial.SetInt("unity_GUIZTestMode", (int)UnityEngine.Rendering.CompareFunction.Always);
+        dotMaterial.renderQueue = 4000; // after the menu, which is at 3000
+        return dotMaterial;
+    }
+
     private void BuildPointer(HandState hand)
     {
         if (pointerMaterial == null)
@@ -428,7 +453,7 @@ public class PointerSource : MonoBehaviour
         if (dotCollider != null) Destroy(dotCollider);
 
         Renderer dotRenderer = dot.GetComponent<Renderer>();
-        dotRenderer.sharedMaterial = pointerMaterial;
+        dotRenderer.sharedMaterial = DotMaterial();
         dotRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
         dotRenderer.receiveShadows = false;
 
