@@ -317,8 +317,12 @@ public class PointerSource : MonoBehaviour
         if (hand.xriOrigin != null && hand.xriOrigin.gameObject.activeInHierarchy &&
             (hand.xriOrigin.position - hand.transform.position).sqrMagnitude < 0.25f)
         {
-            position = hand.xriOrigin.position;
-            direction = hand.xriOrigin.forward;
+            // The toolkit already steadies this ray. Use it exactly as it is, with no
+            // extra smoothing, so the blue pointer and the white ray never drift apart.
+            hand.aimStarted = true;
+            hand.aimPosition = hand.xriOrigin.position;
+            hand.aimDirection = hand.xriOrigin.forward;
+            return;
         }
 
         if (!hand.aimStarted)
