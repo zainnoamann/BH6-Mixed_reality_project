@@ -12,6 +12,8 @@ prompt_embeds.pt
 .DS_Store
 # server runtime
 .venv-server/
+.venv-stt/
+.venv-*/
 jobs/
 logs/
 prompt_embeds/
