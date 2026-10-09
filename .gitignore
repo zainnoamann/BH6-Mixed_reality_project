@@ -34,3 +34,5 @@ AI Models/**/__pycache__/
 *.slnx
 *.user
 *.userprefs
+/[Aa]ssets/_Recovery/
+/[Aa]ssets/_Recovery.meta

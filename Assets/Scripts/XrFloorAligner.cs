@@ -27,6 +27,11 @@ public class XrFloorAligner : MonoBehaviour
     [Tooltip("Move the XR Origin up or down onto the room's floor at start.")]
     public bool snapToFloor = true;
 
+    // The floor is searched for from a little above the XR Origin, under the ceiling, so
+    // the floor of the storey the XR Origin is placed in is found, not one above it.
+    private const float SearchAbove = 1f;
+    private const float SearchBelow = 2f;
+
     private IEnumerator Start()
     {
         XROrigin origin = FindFirstObjectByType<XROrigin>();
@@ -48,17 +53,16 @@ public class XrFloorAligner : MonoBehaviour
 
         if (snapToFloor && TryFindFloor(origin.transform.position, out float floorY))
         {
-            CharacterController body = origin.GetComponent<CharacterController>();
-            bool hadBody = body != null && body.enabled;
-
-            if (hadBody) body.enabled = false; // it would undo the move otherwise
-
             Vector3 position = origin.transform.position;
             Debug.Log($"XrFloorAligner: floor is at height {floorY:F2}, XR Origin was at {position.y:F2}.");
             position.y = floorY + 0.01f;
             origin.transform.position = position;
 
-            if (hadBody) body.enabled = true;
+            // Hand the move to the CharacterController straight away, so it does not undo it.
+            // Do not switch the controller off and on for this: before head tracking starts
+            // its capsule is shorter than its Step Offset, Unity refuses to switch it back
+            // on, and the thumbsticks can no longer move the player.
+            Physics.SyncTransforms();
         }
         else if (snapToFloor)
         {
@@ -75,13 +79,20 @@ public class XrFloorAligner : MonoBehaviour
         }
     }
 
-    /// <summary>Looks straight down through the XR Origin for the floor.</summary>
+    /// <summary>
+    /// Looks straight down through the XR Origin for the floor.
+    ///
+    /// Starts just above the XR Origin, not high above the house: the walls and every
+    /// storey's floor can be one mesh ("Walls_Floors"), and a ray reports only one hit per
+    /// collider, so from above the house it only ever found the top storey.
+    /// </summary>
     private static bool TryFindFloor(Vector3 around, out float floorY)
     {
         floorY = 0f;
 
-        Ray down = new Ray(new Vector3(around.x, around.y + 50f, around.z), Vector3.down);
-        RaycastHit[] hits = Physics.RaycastAll(down, 100f, ~0, QueryTriggerInteraction.Ignore);
+        Ray down = new Ray(new Vector3(around.x, around.y + SearchAbove, around.z), Vector3.down);
+        RaycastHit[] hits = Physics.RaycastAll(down, SearchAbove + SearchBelow, ~0,
+                                               QueryTriggerInteraction.Ignore);
 
         bool found = false;
         bool foundNamedFloor = false;
@@ -95,15 +106,16 @@ public class XrFloorAligner : MonoBehaviour
 
             bool namedFloor = IsFloor(hit.collider.transform);
 
-            // A piece called "floor" always wins. Otherwise take the lowest surface,
-            // so we do not end up standing on a table or on the roof.
+            // A piece called "floor" always wins, so a rug or a low table does not.
+            // Otherwise take the highest surface: the first one under the XR Origin is the
+            // one you stand on; anything lower is under the floor (ground, foundations).
             if (namedFloor && !foundNamedFloor)
             {
                 floorY = hit.point.y;
                 foundNamedFloor = true;
                 found = true;
             }
-            else if (namedFloor == foundNamedFloor && (!found || hit.point.y < floorY))
+            else if (namedFloor == foundNamedFloor && (!found || hit.point.y > floorY))
             {
                 floorY = hit.point.y;
                 found = true;

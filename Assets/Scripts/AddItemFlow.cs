@@ -596,7 +596,8 @@ public class AddItemFlow : MonoBehaviour
 
         textureTarget.RememberForUndo();
         textureTarget.ClearHighlights();
-        GeneratedModelLoader.ApplyLook(textureTarget.gameObject, previewImage, previewColour);
+        GeneratedModelLoader.ApplyLook(textureTarget.gameObject, previewImage, previewColour,
+                                       tileBySize: true);
         textureTarget.AdoptCurrentMaterials();
 
         flow = null;

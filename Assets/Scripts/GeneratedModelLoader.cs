@@ -95,25 +95,44 @@ public static class GeneratedModelLoader
         return block;
     }
 
+    /// <summary>Real-world size, in metres, that one copy of a Change Texture image covers.</summary>
+    private const float MetresPerTile = 0.75f;
+
     /// <summary>
     /// Puts a new URP Lit look on every renderer. Used for generated meshes and for
     /// Change Texture on an object that is already in the room. Does not rebuild geometry.
     /// Flowers vs vase only stay separate if they are already different objects.
+    ///
+    /// tileBySize: repeat the image once every MetresPerTile instead of once per UV unit.
+    /// The room model's UVs are in small real-world units, so at tiling 1 a generated
+    /// texture repeated dozens of times and read as tiny coloured squares.
     /// </summary>
-    public static void ApplyLook(GameObject target, Texture2D image, Color fallbackColour)
+    public static void ApplyLook(GameObject target, Texture2D image, Color fallbackColour,
+                                 bool tileBySize = false)
     {
         if (target == null)
         {
             return;
         }
 
-        Material material = CreateLook(image, fallbackColour);
+        Material shared = CreateLook(image, fallbackColour);
 
         foreach (Renderer renderer in target.GetComponentsInChildren<Renderer>(true))
         {
             if (renderer == null)
             {
                 continue;
+            }
+
+            Material material = shared;
+
+            if (tileBySize && image != null)
+            {
+                // Each mesh has its own UV density, so each renderer gets its own tiling.
+                material = new Material(shared);
+                Vector2 tiling = TilingFor(renderer);
+                if (material.HasProperty("_BaseMap")) material.SetTextureScale("_BaseMap", tiling);
+                material.mainTextureScale = tiling;
             }
 
             Material[] slots = renderer.sharedMaterials;
@@ -155,6 +174,65 @@ public static class GeneratedModelLoader
         material.color = fallbackColour;
 
         return material;
+    }
+
+    /// <summary>
+    /// Tiling that makes one copy of the texture cover MetresPerTile on this mesh, worked
+    /// out from how much UV area the mesh uses per square metre of surface.
+    /// </summary>
+    private static Vector2 TilingFor(Renderer renderer)
+    {
+        Mesh mesh = null;
+
+        if (renderer is SkinnedMeshRenderer skinned)
+        {
+            mesh = skinned.sharedMesh;
+        }
+        else if (renderer.TryGetComponent(out MeshFilter filter))
+        {
+            mesh = filter.sharedMesh;
+        }
+
+        if (mesh == null || !mesh.isReadable)
+        {
+            return Vector2.one;
+        }
+
+        Vector3[] vertices = mesh.vertices;
+        Vector2[] uv = mesh.uv;
+        int[] triangles = mesh.triangles;
+
+        if (uv.Length != vertices.Length || triangles.Length < 3)
+        {
+            return Vector2.one;
+        }
+
+        Vector3 scale = renderer.transform.lossyScale;
+        double worldArea = 0.0;
+        double uvArea = 0.0;
+
+        for (int i = 0; i + 2 < triangles.Length; i += 3)
+        {
+            int a = triangles[i], b = triangles[i + 1], c = triangles[i + 2];
+
+            Vector3 ab = Vector3.Scale(vertices[b] - vertices[a], scale);
+            Vector3 ac = Vector3.Scale(vertices[c] - vertices[a], scale);
+            worldArea += Vector3.Cross(ab, ac).magnitude * 0.5;
+
+            Vector2 uab = uv[b] - uv[a];
+            Vector2 uac = uv[c] - uv[a];
+            uvArea += Mathf.Abs(uab.x * uac.y - uab.y * uac.x) * 0.5;
+        }
+
+        if (worldArea < 1e-8 || uvArea < 1e-12)
+        {
+            return Vector2.one; // no usable UVs: leave the default
+        }
+
+        float uvPerMetre = (float)Math.Sqrt(uvArea / worldArea);
+        float tiling = 1f / (uvPerMetre * MetresPerTile);
+
+        return new Vector2(tiling, tiling);
     }
 
     /// <summary>Uniformly scales the object so its renderer bounds are targetHeight tall.</summary>
