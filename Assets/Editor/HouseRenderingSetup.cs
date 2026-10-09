@@ -12,14 +12,18 @@ using UnityEngine.Rendering.Universal;
 ///     1. Builds the house materials (Tools > House > Build Materials).
 ///     2. Sun, sky, ambient light and distance haze.
 ///     3. A light in every ceiling bulb and lamp shade of the model.
-///     4. Crisp, high-resolution shadows; strong ambient occlusion in creases (PC
-///        pipeline asset only, so the Quest settings are untouched).
+///     4. Crisp, high-resolution shadows; ambient occlusion in creases; the image drawn
+///        above screen resolution (PC pipeline asset only, so the Quest settings are
+///        untouched).
 ///     5. Camera: temporal anti-aliasing with sharpening, dithering, post-processing.
-///     6. Post-processing profile: filmic tone mapping, a moody grade with cool shade
-///        and warm light, bloom on bright lights, vignette, film grain.
-///     7. Bakes the lighting, then the reflection probes (Tools > House > Add Reflection
-///        Probes). Until Tools > House > Bake Lighting has been run once this is only the
-///        sky's light, which takes seconds; after it, the full bounced-light bake.
+///     6. Post-processing profile: filmic tone mapping, a warm, lively grade, bloom on
+///        bright lights, vignette, film grain.
+///     7. Bakes the sky's light, then the reflection probes (Tools > House > Add
+///        Reflection Probes). Takes seconds.
+///
+/// All lighting is real-time: lightmaps baked from this model came out black in places,
+/// so the bounce light between surfaces is imitated by the sky's ambient light instead
+/// (warm from below, as off a wooden floor).
 ///
 /// Every value is in the recipe below; change one and run the menu again. It updates
 /// what it made before instead of adding more.
@@ -30,10 +34,11 @@ public static class HouseRenderingSetup
     private const string RendererPath = "Assets/Settings/PC_Renderer.asset";
     private const string ProfilePath = "Assets/Settings/RealisticVolumeProfile.asset";
     private const string SkyPath = "Assets/Settings/RealisticSky.mat";
-    internal const string LightsGroupName = "House Lights";
+    private const string LightingPath = "Assets/Settings/RealisticLighting.lighting";
+    private const string LightsGroupName = "House Lights";
 
-    // The look is moody but readable: a golden-hour sun cuts crisp light patches through
-    // the windows, shade is cool and soft rather than black, and lamps add warm pools.
+    // The look is warm and lively: a golden-hour sun cuts crisp light patches through the
+    // windows, every room is softly lit, lamps add warm pools.
     // Brighter overall: raise PostExposure first (each +1 doubles the brightness), then
     // AmbientIntensity. Darker and moodier: the reverse, and raise Contrast.
 
@@ -41,22 +46,24 @@ public static class HouseRenderingSetup
     private const float SunElevation = 30f;         // degrees above the horizon
     private const float SunHeading = -40f;
     private const float SunIntensity = 3f;
-    private const float SunTemperature = 4000f;     // kelvin
+    private const float SunTemperature = 4200f;     // kelvin
 
-    // ---- sky light filling the shade: keeps every corner visible
-    private const float AmbientIntensity = 1.1f;
+    // ---- sky light filling the shade: keeps every corner visible. It comes from the
+    // sky above and from FloorBounce below, so ceilings and undersides glow warm.
+    private const float AmbientIntensity = 1.25f;
     private const float ReflectionIntensity = 1f;
+    private static readonly Color FloorBounce = new Color(0.52f, 0.42f, 0.32f);
 
-    // ---- indoor lights: warm 2700 K pools under each bulb, a glow from each lamp
+    // ---- indoor lights: warm 2700 K light under each bulb, a glow from each lamp
     private const string BulbMaterial = "_Orange_";
-    private const float BulbIntensity = 5f;
-    private const float BulbRange = 4f;
+    private const float BulbIntensity = 6f;
+    private const float BulbRange = 4.5f;
     private const float BulbTemperature = 2700f;
-    private const float BulbSpotAngle = 80f;        // a defined pool of light, not a wash
-    private const float BulbInnerAngle = 0.35f;     // of BulbSpotAngle: a soft-edged pool
+    private const float BulbSpotAngle = 110f;       // a broad, soft wash down the walls
+    private const float BulbInnerAngle = 0.4f;      // of BulbSpotAngle: a soft-edged pool
 
     private const string LampshadeMaterial = "H_Lampshade";
-    private const float LampIntensity = 2f;
+    private const float LampIntensity = 2.5f;
     private const float LampRange = 2.5f;
     private const float LampTemperature = 2400f;
 
@@ -73,16 +80,18 @@ public static class HouseRenderingSetup
     private const float OcclusionRadius = 0.25f;    // tight, so the darkening hugs the contact
     private const float OcclusionDirectStrength = 0.25f;
 
-    // ---- sharp image: temporal anti-aliasing (no shimmer on glossy floors) with sharpening
+    // ---- sharp image: drawn above screen resolution, then temporal anti-aliasing (no
+    // shimmer on glossy floors) with sharpening
+    private const float RenderScale = 1.3f;         // 1 = screen resolution; costs GPU time
     private const float Sharpening = 0.6f;          // 0 = soft, 1 = strongest
     private const float TextureSharpness = -0.5f;   // texture mip bias, -1 .. 0; lower is sharper
 
     // ---- grading
-    private const float PostExposure = 0.6f;        // ACES tone mapping darkens; this lifts it back
-    private const float Contrast = 12f;
-    private const float Saturation = -6f;           // slightly muted, not grey
-    private static readonly Color ShadowTint = new Color(0.45f, 0.52f, 0.58f);    // cool shade
-    private static readonly Color HighlightTint = new Color(0.62f, 0.52f, 0.42f); // warm light
+    private const float PostExposure = 0.5f;        // ACES tone mapping darkens; this lifts it back
+    private const float Contrast = 10f;
+    private const float Saturation = 6f;            // a little richer: wood, fabric and plants read alive
+    private static readonly Color ShadowTint = new Color(0.48f, 0.5f, 0.53f);     // shade a touch cool
+    private static readonly Color HighlightTint = new Color(0.6f, 0.53f, 0.45f);  // warm light
 
     // ---- haze: invisible indoors, softens the far garden and the horizon
     private const float HazeDensity = 0.004f;
@@ -101,18 +110,91 @@ public static class HouseRenderingSetup
             return;
         }
 
+        RemoveOldExperiments(model);
         SetUpSunAndSky();
         int lights = AddIndoorLights(model);
         SetUpPipeline();
         SetUpCameras();
         SetUpPostProcessing();
-        HouseLightBaker.MarkStaticParts(model); // reflection probes only capture flagged objects
+        MarkForReflections(model);
 
         EditorSceneManager.MarkSceneDirty(model.scene);
-        HouseLightBaker.Bake();
+        BakeSkyLight();
 
-        Debug.Log("House rendering: done, " + lights + " indoor lights. Lighting is baking in the " +
-                  "background (progress bar, bottom right).");
+        Debug.Log("House rendering: done, " + lights + " indoor lights. The sky's light is baking " +
+                  "(a few seconds); save the scene when it finishes.");
+    }
+
+    // ------------------------------------------------------------------ clean-up
+
+    /// <summary>
+    /// Removes what earlier versions of these tools added: the wall plaster, and the
+    /// lightmap bake (its lightmaps, window lights, light probes and static flags).
+    /// Does nothing once the scene is clean; can be deleted when every copy of the scene is.
+    /// </summary>
+    private static void RemoveOldExperiments(GameObject model)
+    {
+        HouseMaterialBuilder.RemovePlaster(model);
+
+        foreach (string name in new[] { "House Window Lights", "House Light Probes" })
+        {
+            GameObject old = GameObject.Find(name);
+            if (old != null)
+                Undo.DestroyObjectImmediate(old);
+        }
+
+        Lightmapping.Clear();
+    }
+
+    /// <summary>
+    /// Reflection probes only capture objects flagged for them, so mirrors and glass show
+    /// the rooms. Nothing is flagged for lightmaps, and nothing for batching, which would
+    /// stop furniture and doors from moving.
+    /// </summary>
+    private static void MarkForReflections(GameObject model)
+    {
+        foreach (MeshRenderer renderer in model.GetComponentsInChildren<MeshRenderer>(true))
+        {
+            GameObject go = renderer.gameObject;
+            Undo.RecordObject(go, "Mark for reflections");
+            StaticEditorFlags flags = GameObjectUtility.GetStaticEditorFlags(go);
+            flags |= StaticEditorFlags.ReflectionProbeStatic;
+            flags &= ~StaticEditorFlags.ContributeGI;
+            GameObjectUtility.SetStaticEditorFlags(go, flags);
+        }
+    }
+
+    /// <summary>
+    /// Bakes only the sky's ambient light and reflection (no lightmaps), so builds look
+    /// like the editor; then the reflection probes, so they show the lit rooms.
+    /// </summary>
+    private static void BakeSkyLight()
+    {
+        LightingSettings settings = AssetDatabase.LoadAssetAtPath<LightingSettings>(LightingPath);
+        if (settings == null)
+        {
+            settings = new LightingSettings();
+            AssetDatabase.CreateAsset(settings, LightingPath);
+        }
+        settings.bakedGI = false;
+        settings.realtimeGI = false;
+        EditorUtility.SetDirty(settings);
+        AssetDatabase.SaveAssets();
+
+        Lightmapping.lightingSettings = settings;
+        Lightmapping.bakeCompleted -= AfterBake;
+        Lightmapping.bakeCompleted += AfterBake;
+        if (!Lightmapping.BakeAsync())
+        {
+            Lightmapping.bakeCompleted -= AfterBake;
+            Debug.LogError("House rendering: Unity could not start baking the sky light (is the scene saved to a file?).");
+        }
+    }
+
+    private static void AfterBake()
+    {
+        Lightmapping.bakeCompleted -= AfterBake;
+        HouseMaterialBuilder.AddReflectionProbes();
     }
 
     // ------------------------------------------------------------------ sun and sky
@@ -148,9 +230,7 @@ public static class HouseRenderingSetup
         sunData.usePipelineSettings = false;
         sunData.softShadowQuality = SoftShadowQuality.Low;
         EditorUtility.SetDirty(sunData);
-        // Mixed: real-time light and shadows (they follow moved furniture), plus baked
-        // bounce light once Bake Lighting is on. Without a bake it is plain real-time.
-        sun.lightmapBakeType = LightmapBakeType.Mixed;
+        sun.lightmapBakeType = LightmapBakeType.Realtime; // shadows follow moved furniture
 
         Material sky = AssetDatabase.LoadAssetAtPath<Material>(SkyPath);
         if (sky == null)
@@ -163,7 +243,7 @@ public static class HouseRenderingSetup
         sky.SetFloat("_SunSizeConvergence", 6f);
         sky.SetFloat("_AtmosphereThickness", 1.1f); // a touch of haze, warmer near the horizon
         sky.SetColor("_SkyTint", new Color(0.5f, 0.52f, 0.55f));
-        sky.SetColor("_GroundColor", new Color(0.36f, 0.34f, 0.32f));
+        sky.SetColor("_GroundColor", FloorBounce);  // the light from below in the ambient
         sky.SetFloat("_Exposure", 1.2f);
         EditorUtility.SetDirty(sky);
 
@@ -257,7 +337,7 @@ public static class HouseRenderingSetup
         light.useColorTemperature = true;
         light.colorTemperature = temperature;
         light.color = Color.white;
-        light.lightmapBakeType = LightmapBakeType.Mixed; // as the sun
+        light.lightmapBakeType = LightmapBakeType.Realtime; // as the sun
         return light;
     }
 
@@ -355,6 +435,7 @@ public static class HouseRenderingSetup
         pipeline.mainLightShadowmapResolution = SunShadowResolution;
         pipeline.additionalLightsShadowmapResolution = LampShadowAtlasResolution;
         pipeline.shadowDistance = ShadowDistance;
+        pipeline.renderScale = RenderScale;
         pipeline.colorGradingMode = ColorGradingMode.HighDynamicRange;    // filmic tone mapping needs HDR grading
         pipeline.hdrColorBufferPrecision = HDRColorBufferPrecision._64Bits; // no banding in dim corners
         EditorUtility.SetDirty(pipeline);

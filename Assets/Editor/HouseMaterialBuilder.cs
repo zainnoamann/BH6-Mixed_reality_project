@@ -218,7 +218,7 @@ public static class HouseMaterialBuilder
         string source = TextureFolder + "/" + recipe.Texture + ".jpg";
         if (AssetImporter.GetAtPath(source) is TextureImporter colour)
         {
-            colour.anisoLevel = 8; // floors and walls seen at shallow angles stay sharp
+            colour.anisoLevel = 16; // floors and walls seen at shallow angles stay sharp
             colour.wrapMode = TextureWrapMode.Repeat;
             colour.SaveAndReimport();
         }
@@ -240,7 +240,7 @@ public static class HouseMaterialBuilder
             normal.convertToNormalmap = true;
             normal.heightmapScale = 0.1f * recipe.Bump;
             normal.normalmapFilter = TextureImporterNormalFilter.Sobel;
-            normal.anisoLevel = 8;
+            normal.anisoLevel = 16;
             normal.SaveAndReimport();
         }
     }
@@ -279,10 +279,33 @@ public static class HouseMaterialBuilder
         BaseShaderGUI.SetMaterialKeywords(material, LitGUI.SetMaterialKeywords);
     }
 
+    // ------------------------------------------------------------------ old wall plaster
+
+    /// <summary>
+    /// An earlier version plastered the walls of Walls_Floors. This puts the model's own
+    /// paint back and deletes the plaster material and its textures. It does nothing once
+    /// the scene is clean.
+    /// </summary>
+    internal static void RemovePlaster(GameObject model)
+    {
+        foreach (MeshRenderer renderer in model.GetComponentsInChildren<MeshRenderer>(true))
+        {
+            if (System.Array.Exists(renderer.sharedMaterials, m => m != null && m.name == "Wall_Plaster"))
+            {
+                SerializedProperty slots = new SerializedObject(renderer).FindProperty("m_Materials");
+                PrefabUtility.RevertPropertyOverride(slots, InteractionMode.UserAction);
+            }
+        }
+
+        AssetDatabase.DeleteAsset(MaterialFolder + "/Wall_Plaster.mat");
+        AssetDatabase.DeleteAsset(TextureFolder + "/Plaster_Colour.png");
+        AssetDatabase.DeleteAsset(TextureFolder + "/Plaster_Normal.png");
+    }
+
     // ------------------------------------------------------------------ reflections
 
     // Floors in the model's own coordinates (metres): x and z cover the house, y each storey.
-    internal static readonly (string name, float bottom, float top)[] Storeys =
+    private static readonly (string name, float bottom, float top)[] Storeys =
     {
         ("Ground floor", 3.05f, 5.75f),
         ("Upper floor", 6.05f, 8.75f),
@@ -290,8 +313,8 @@ public static class HouseMaterialBuilder
 
     // Model x is mirrored on import (Unity is left-handed), so the house spans
     // x -23.3 .. -9.8 in the model's space.
-    internal static readonly Vector3 HouseMin = new Vector3(-23.3f, 0f, -26.5f);
-    internal static readonly Vector3 HouseMax = new Vector3(-9.8f, 0f, -7.0f);
+    private static readonly Vector3 HouseMin = new Vector3(-23.3f, 0f, -26.5f);
+    private static readonly Vector3 HouseMax = new Vector3(-9.8f, 0f, -7.0f);
 
     [MenuItem("Tools/House/Add Reflection Probes")]
     public static void AddReflectionProbes()
