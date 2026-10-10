@@ -5,14 +5,20 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.Networking;
+using UnityEngine.SceneManagement;
 
 /// <summary>
 /// Push-to-talk for the "describe what to add" box.
 ///
-/// Hold the key (default V), or the headset controller button (default left Y), or call
+/// Hold the key (default V), or the headset controller button (default right A), or call
 /// StartRecording()/StopRecording() from a UI button's pointer down/up. On release the clip is sent to the STT
 /// service (AI Models/stt/stt_service.py) and the transcript is written into the prompt
 /// field, so the existing Generate button works unchanged. Set autoGenerate to skip it.
+///
+/// No scene setup is needed: when a scene that contains the prompt box (an input field named
+/// "PromptInputField") loads, this component creates itself and finds the prompt field and the
+/// status label ("ImageStatusText") by name. A VoicePromptInput placed in a scene by hand is
+/// used instead, with its own field assignments.
 ///
 /// The microphone runs continuously into a short ring buffer, and each clip starts a
 /// little before the key was pressed and ends a little after it was released, so the
@@ -31,8 +37,11 @@ public class VoicePromptInput : MonoBehaviour
     [SerializeField] private float preRollSeconds = 0.4f;
     [SerializeField] private float tailSeconds = 0.3f;
 
-    [Tooltip("Headset controller button to hold while speaking. The right-hand B button is already Cancel in PointerSource.")]
-    [SerializeField] private TalkButton controllerButton = TalkButton.LeftY;
+    [Tooltip("Headset controller button to hold while speaking. PointerSource already uses left X, left Y and right B, so right A is the free one.")]
+    [SerializeField] private TalkButton controllerButton = TalkButton.RightA;
+
+    private const string PromptFieldName = "PromptInputField";
+    private const string StatusTextName = "ImageStatusText";
 
     private const int SampleRate = 16000;
     private AudioClip ring;
@@ -43,8 +52,33 @@ public class VoicePromptInput : MonoBehaviour
     private float startTime;
     private InputAction talkAction;
 
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+    private static void Bootstrap()
+    {
+        SceneManager.sceneLoaded += (scene, mode) => SpawnIfNeeded();
+        SpawnIfNeeded();
+    }
+
+    private static void SpawnIfNeeded()
+    {
+        if (FindObjectsByType<VoicePromptInput>(FindObjectsInactive.Include, FindObjectsSortMode.None).Length > 0) return;
+        if (FindByName<TMP_InputField>(PromptFieldName) == null) return;
+
+        new GameObject("VoiceInput (auto)").AddComponent<VoicePromptInput>();
+    }
+
+    private static T FindByName<T>(string objectName) where T : Component
+    {
+        foreach (T c in FindObjectsByType<T>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            if (c.gameObject.name == objectName) return c;
+        return null;
+    }
+
     private void Awake()
     {
+        if (promptInputField == null) promptInputField = FindByName<TMP_InputField>(PromptFieldName);
+        if (statusText == null) statusText = FindByName<TMP_Text>(StatusTextName);
+
         if (controllerButton == TalkButton.None) return;
 
         bool left = controllerButton == TalkButton.LeftY || controllerButton == TalkButton.LeftX;
