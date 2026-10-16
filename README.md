@@ -12,6 +12,12 @@ The current prototype runs end-to-end in a Meta Quest headset over Quest Link, a
 
 > **Current status:** The full workflow works end-to-end in the headset: prompt, image review, textured 3D object, and constraint-aware placement (room bounds, surface snapping, overlap check with red feedback). Objects can be moved, rotated, resized, retextured and deleted. Generation runs on a desktop GPU, so the app runs over Quest Link; a standalone APK is not supported. See [Documentation/SETUP.md](Documentation/SETUP.md) for setup.
 
+<p align="center">
+  <img src="Documentation/images/headset-selection-toolbar.jpg" alt="An armchair selected in the headset, with the Move, Rotate, Resize, Change Texture, Delete and Close toolbar" width="900">
+  <br>
+  <em>In the Meta Quest 3 over Quest Link: a selected armchair with the object toolbar. The inset shows the user in the lab.</em>
+</p>
+
 ---
 
 ## Overview
@@ -67,6 +73,12 @@ Add a modern wooden bedside table next to the bed.
 ```
 
 The request is sent from Unity to the external AI generation service.
+
+<p align="center">
+  <img src="Documentation/images/headset-new-item-prompt.jpg" alt="The New Item panel and the in-headset keyboard" width="800">
+  <br>
+  <em>The New Item panel in the headset. The prompt is typed on the in-headset keyboard with the controller pointer.</em>
+</p>
 
 ### AI Text-to-Image Generation
 
@@ -136,6 +148,17 @@ Selecting an object opens the context menu with four available actions.
 1. Select **Change Texture** and describe the material, for example "oak wood".
 2. FLUX generates a flat, seamless material image. Review it, then choose **Apply to object**.
 3. Unity applies the image to the selected object's material. **Accept** to keep it or **Undo** to go back.
+
+<table>
+  <tr>
+    <td width="50%"><img src="Documentation/images/headset-change-texture-prompt.jpg" alt="Change Texture panel for a selected cabinet"></td>
+    <td width="50%"><img src="Documentation/images/headset-texture-preview.jpg" alt="Preview of a generated wood texture before applying it"></td>
+  </tr>
+  <tr>
+    <td align="center"><em>1. Describe the new look for the selected object. The mesh stays; only the look changes.</em></td>
+    <td align="center"><em>2. Review the generated material, then apply it, regenerate or cancel.</em></td>
+  </tr>
+</table>
 
 #### Move Object
 
@@ -440,13 +463,21 @@ The user can walk through the interior and review the generated object in contex
 | XR headset (Quest over Link)     | ✅ Working                |
 | Controller pointer and keyboard  | ✅ Working                |
 | Real progress / time left        | ✅ Working                |
-| Real-world object scaling        | ✅ Working (typical size per object type) |
+| Real-world object scaling        | ✅ Working, for listed object types only (see note below) |
 | Automatic floor snapping         | ✅ Working (floor and table tops) |
 | Collision detection              | ✅ Working (red when overlapping) |
 | Constraint-aware placement       | ✅ Working (room bounds, surface support, overlap) |
 | Wall-clearance checking          | ⚠️ Partial (kept inside walls; no door / window clearance) |
 | Automatic placement              | ⚠️ Partial (appears in front of the user; no free-spot search) |
 | Standalone Quest APK             | ❌ Not supported (generation needs a desktop GPU) |
+
+> **Note on real-world object scaling:** generated meshes have no real size, so the app looks for a known object name in the prompt and scales the mesh to that object's typical height. The list (`Assets/Scripts/TypicalSizes.cs`) covers about 60 common furniture and decor items, such as chairs, sofas, tables, beds, lamps, vases, plants and TVs.
+>
+> * Only words on this list are scaled to a real-world size. Anything else, for example kitchen appliances and fittings (fridge, oven, microwave, kettle, sink), bathroom fittings (bathtub, toilet) or a piano, starts at 30% of the ceiling height instead.
+> * Only the height is matched. Width and depth follow the shape the AI generated.
+> * Size words in the prompt ("tiny", "large") are ignored.
+> * The user can correct any size afterwards with **Resize** (10% steps, from 0.25x to 3x).
+> * New object types can be supported by adding a name and a height in metres to the list.
 
 ---
 
