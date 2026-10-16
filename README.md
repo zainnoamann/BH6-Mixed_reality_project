@@ -2,15 +2,15 @@
 
 ## AI + XR for Interactive 3D Interior Customisation
 
-**COSC2476 Mixed Reality (2650) · Group BH6 · Milestone 2**
+**COSC2476 Mixed Reality (2650) · Group BH6 · Milestone 3**
 
 CreativeTwin is a Unity-based AI + XR prototype for interactive 3D interior customisation.
 
 The system allows users to select objects within a 3D interior, describe a desired furniture item or change using natural language, generate a new 3D object using AI, place the generated object inside the room, and review the result spatially.
 
-The current prototype runs end-to-end on desktop. AI generation is performed externally through a FastAPI service, while Unity acts as the runtime environment for the interior, user interaction, object placement, and eventual XR review.
+The current prototype runs end-to-end in a Meta Quest headset over Quest Link, and on desktop. AI generation is performed externally through a FastAPI service on a desktop GPU, while Unity acts as the runtime environment for the interior, user interaction, object placement, and XR review.
 
-> **Current status:** The text-to-3D generation workflow is working end-to-end on desktop. XR headset deployment, automatic scaling, constraint-aware placement, collision checking, and AI-generated texture integration into Unity are still under development.
+> **Current status:** The full workflow works end-to-end in the headset: prompt, image review, textured 3D object, and constraint-aware placement (room bounds, surface snapping, overlap check with red feedback). Objects can be moved, rotated, resized, retextured and deleted. Generation runs on a desktop GPU, so the app runs over Quest Link; a standalone APK is not supported. See [Documentation/SETUP.md](Documentation/SETUP.md) for setup.
 
 ---
 
@@ -113,12 +113,14 @@ This review-first workflow is important because AI generation is probabilistic a
 
 The current prototype supports:
 
-* Object selection.
-* Object movement.
-* Floor-constrained dragging.
-* Generated-object placement.
+* Object selection (mouse on desktop, controller pointer in the headset).
+* Object movement that snaps onto the floor or the top of other furniture.
+* Rotation in 15-degree steps.
+* Resizing in 10% steps.
+* Deletion.
+* Generated-object placement with an overlap check (red when blocked).
 
-Further manipulation functionality, including rotation and deletion, remains under development.
+The room shell (walls, floor, ceiling, windows and doors) is locked and cannot be moved.
 
 ### Context Menu
 
@@ -131,13 +133,14 @@ Selecting an object opens the context menu with four available actions.
 
 #### Change Texture
 
-1. Select **Change Texture** and provide the desired texture or appearance.
-2. The AI texture pipeline generates the texture; Unity integration of the generated texture is currently under development.
+1. Select **Change Texture** and describe the material, for example "oak wood".
+2. FLUX generates a flat, seamless material image. Review it, then choose **Apply to object**.
+3. Unity applies the image to the selected object's material. **Accept** to keep it or **Undo** to go back.
 
 #### Move Object
 
 1. Select **Move Object** to activate object movement.
-2. Drag the object to the desired position while it remains constrained to the floor.
+2. Point to the desired position. The object snaps onto the floor or a table top and turns red where it would overlap other furniture.
 
 ### Fallback Mode
 
@@ -265,13 +268,15 @@ The generated mesh is then returned to Unity.
 
 ### 3. Texture Generation
 
-CreativeTwin also uses **Hunyuan Paint** to investigate AI-generated textures.
+CreativeTwin uses **Hunyuan3D-Paint** to bake a texture onto each generated mesh. The textured `.glb` is downloaded and loaded by Unity.
 
-The texture pipeline can produce a baked texture, but the result is currently not reliably reaching Unity.
+The earlier blocker was the `custom_rasterizer` CUDA extension. It was resolved on the lab RTX 5090 by running the pipelines in WSL Ubuntu with the CUDA Toolkit 12.8 (matching PyTorch `cu128`) and building the extensions with `nvcc`.
 
-The main issue is the `custom_rasterizer` CUDA extension required by Hunyuan Paint. Compatibility between the PyTorch, CUDA, Python, and compiler environment is currently preventing reliable integration.
+To keep generation time reasonable, the mesh is simplified to 40,000 faces before painting. This brought a full generation from 15 to 40 minutes down to under 6 minutes.
 
-Until this issue is resolved, generated objects use a Unity material fallback.
+If painting fails, the job still returns the untextured mesh, so the object can be placed.
+
+For an object that is already in the room, **Change Texture** does not use Hunyuan Paint. FLUX generates a flat, seamless material image, and Unity applies it to the object's material.
 
 ---
 
@@ -425,17 +430,23 @@ The user can walk through the interior and review the generated object in contex
 | Generated-object movement        | ✅ Working                |
 | Review / regenerate workflow     | ✅ Working                |
 | Fallback / placeholder mode      | ✅ Working                |
-| Hunyuan Paint texture bake       | ⚠️ Working in isolation  |
-| Texture integration into Unity   | ⚠️ Blocked / In progress |
-| Object rotation                  | ⚠️ In progress           |
-| Object deletion                  | ⚠️ In progress           |
-| XR headset build                 | ⚠️ In progress           |
-| Real-world object scaling        | ❌ Not implemented        |
-| Automatic floor snapping         | ❌ Not implemented        |
-| Wall-clearance checking          | ❌ Not implemented        |
-| Collision detection              | ❌ Not implemented        |
-| Automatic placement              | ❌ Not implemented        |
-| Constraint-aware placement       | ❌ Not implemented        |
+| Hunyuan Paint texture bake       | ✅ Working (lab RTX 5090, WSL) |
+| Texture integration into Unity   | ✅ Working (baked `.glb` loads textured) |
+| Change Texture (existing object) | ✅ Working (FLUX seamless material image) |
+| Object rotation                  | ✅ Working                |
+| Object resizing                  | ✅ Working                |
+| Object deletion                  | ✅ Working                |
+| Locked room shell (walls, floor) | ✅ Working                |
+| XR headset (Quest over Link)     | ✅ Working                |
+| Controller pointer and keyboard  | ✅ Working                |
+| Real progress / time left        | ✅ Working                |
+| Real-world object scaling        | ✅ Working (typical size per object type) |
+| Automatic floor snapping         | ✅ Working (floor and table tops) |
+| Collision detection              | ✅ Working (red when overlapping) |
+| Constraint-aware placement       | ✅ Working (room bounds, surface support, overlap) |
+| Wall-clearance checking          | ⚠️ Partial (kept inside walls; no door / window clearance) |
+| Automatic placement              | ⚠️ Partial (appears in front of the user; no free-spot search) |
+| Standalone Quest APK             | ❌ Not supported (generation needs a desktop GPU) |
 
 ---
 
@@ -461,11 +472,15 @@ The generated object should not overlap existing furniture or other scene object
 
 The generated object should have a believable size relative to the room and surrounding objects.
 
-These checks are **not yet implemented**.
+These checks are **implemented** in Milestone 3:
 
-Currently, generated meshes do not provide reliable real-world scale information. Unity therefore applies a forced height and the user manually positions the object.
+* **Room boundary:** the object is kept inside the room's walls while it is placed or moved.
+* **Surface support:** the object snaps onto surfaces that face upwards (the floor or a table top), so it never floats or sinks into furniture.
+* **Object overlap:** a box test against the other furniture's colliders. The object turns **green** when the spot is free and **red** when it overlaps, and **Accept** is refused while it is red.
+* **Scale consistency:** the prompt is matched against a table of typical real-world heights for about 60 furniture types (for example chair or vase), relative to the room's ceiling height. Unknown objects fall back to a share of the ceiling height. The user can then **Resize** in 10% steps.
+* **Locked room shell:** walls, floor, ceiling, windows and doors cannot be selected for moving.
 
-The remaining development work is to automate these spatial checks so that the system can assist the user with scale, placement, and collision constraints rather than relying entirely on manual judgement.
+Not yet covered: clearance in front of doors and windows, rules about which objects may stand on which (for example a sofa on a table), and an automatic search for a free spot.
 
 ---
 
@@ -685,13 +700,14 @@ a modern wooden bedside table
 
 #### Change Texture
 
-1. Select **Change Texture** and provide the desired texture or appearance.
-2. The AI texture pipeline generates the texture; Unity integration of the generated texture is currently under development.
+1. Select **Change Texture** and describe the material, for example "oak wood".
+2. FLUX generates a flat, seamless material image. Review it, then choose **Apply to object**.
+3. Unity applies the image to the selected object's material. **Accept** to keep it or **Undo** to go back.
 
 #### Move Object
 
 1. Select **Move Object** to activate object movement.
-2. Drag the object to the desired position while it remains constrained to the floor.
+2. Point to the desired position. The object snaps onto the floor or a table top and turns red where it would overlap other furniture.
 
 ---
 
@@ -831,27 +847,27 @@ The generation process requires significant processing time and cannot currently
 
 ### Texture Integration
 
-The Hunyuan Paint texture stage is currently blocked from reliable Unity integration by the `custom_rasterizer` CUDA toolchain issue.
+Hunyuan Paint works on the lab GPU, but it needs the CUDA Toolkit 12.8 and a compiler to build its extensions, so a new machine needs the full setup in [Documentation/SETUP.md](Documentation/SETUP.md).
 
 ### Object Scale
 
-Generated meshes do not currently contain reliable real-world scale information.
+Generated meshes do not contain real-world scale information. The app uses typical sizes per object type, which may not match an unusual object; the user can resize it.
 
 ### Object Placement
 
-Generated objects must currently be positioned manually.
+A new object appears in front of the user and must be placed by pointing. The app does not search for a free spot by itself.
 
 ### Collision Detection
 
-The system does not yet automatically detect collisions with existing furniture.
+Overlap is checked with a bounding box, so an object with an unusual shape can be marked red near furniture it does not actually touch.
 
 ### Room Constraints
 
-Room boundaries and available space are not yet automatically evaluated.
+Objects are kept inside the room, but there is no extra clearance in front of doors and windows.
 
 ### XR
 
-The current demonstration is performed on desktop. Headset deployment and device testing are still in development.
+The app runs in a Meta Quest over Quest Link. A standalone APK is not supported because generation needs a desktop GPU.
 
 ### Semantic Scene Structure
 
@@ -863,9 +879,8 @@ At the current milestone:
 
 * There is no automated test suite.
 * Formal user testing has not yet been completed.
-* Headset testing has not yet been completed.
+* Headset testing has been done by the team during development, not as a formal study.
 * Load/performance testing has not yet been completed.
-* Spatial constraint testing cannot begin until the constraint system is implemented.
 
 ---
 
